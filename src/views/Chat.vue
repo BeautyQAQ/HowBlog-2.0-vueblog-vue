@@ -53,7 +53,7 @@
               {{ currentTarget ? `与 ${currentTarget} 私聊` : '公共大厅聊天室' }}
             </h3>
             <span class="target-status">
-              {{ wsConnected ? '已连接' : '连接断开，正在重连...' }}
+              {{ wsConnected ? '已连接' : connectionStatus }}
             </span>
           </div>
         </div>
@@ -131,6 +131,8 @@ export default {
       pingTimer: null,
       reconnectTimer: null,
       expiryTimer: null,
+      connectionAttempt: 0,
+      connectionStatus: '正在连接...',
       connectionUserId: ''
     }
   },
@@ -151,6 +153,12 @@ export default {
       )
     }
   },
+  watch: {
+    token() {
+      if (this.isLoggedIn) this.connectWebSocket()
+      else this.closeWebSocket()
+    }
+  },
   mounted() {
     this.connectWebSocket()
   },
@@ -158,19 +166,26 @@ export default {
     this.closeWebSocket()
   },
   methods: {
-    connectWebSocket() {
+    async connectWebSocket() {
       this.closeWebSocket()
-
+      const attempt = this.connectionAttempt
+      this.connectionStatus = '正在连接...'
+      try {
+        await this.$store.dispatch('ensureSession')
+      } catch (error) {
+        this.connectionStatus = '登录已失效，请重新登录'
+        return
+      }
+      if (attempt !== this.connectionAttempt) return
       const user = this.$store.state.user
       if (!user || !user.token || !(user.expiresAt > Date.now())) {
-        this.$store.commit('LOGOUT')
+        this.connectionStatus = '登录已失效，请重新登录'
         return
       }
       this.onlineUsers = []
       this.connectionUserId = ''
       this.expiryTimer = setTimeout(() => {
-        this.closeWebSocket()
-        this.$store.commit('LOGOUT')
+        this.connectWebSocket()
       }, Math.min(user.expiresAt - Date.now(), 2147483647))
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
@@ -197,10 +212,26 @@ export default {
         }
       }
 
-      this.ws.onclose = () => {
+      this.ws.onclose = async event => {
         this.wsConnected = false
         clearInterval(this.pingTimer)
-        // 尝试重连
+        clearTimeout(this.expiryTimer)
+        if (event.code === 1000) {
+          this.connectionStatus = '连接已关闭，可能已在其他页面连接'
+          return
+        }
+        if (event.code === 1008) {
+          this.connectionStatus = '正在验证会话...'
+          try {
+            await this.$store.dispatch('ensureSession', { force: true, token: user.token })
+          } catch (error) {
+            this.connectionStatus = '登录已失效，请重新登录'
+            return
+          }
+          if (attempt === this.connectionAttempt) this.connectWebSocket()
+          return
+        }
+        this.connectionStatus = event.code === 1011 ? '服务暂不可用，正在重连...' : '连接断开，正在重连...'
         this.reconnectTimer = setTimeout(() => {
           this.connectWebSocket()
         }, 5000)
@@ -211,6 +242,7 @@ export default {
       }
     },
     closeWebSocket() {
+      this.connectionAttempt++
       clearInterval(this.pingTimer)
       clearTimeout(this.reconnectTimer)
       clearTimeout(this.expiryTimer)
@@ -261,8 +293,7 @@ export default {
     },
     sendMessage() {
       if (!this.$store.state.user || !(this.$store.state.user.expiresAt > Date.now())) {
-        this.closeWebSocket()
-        this.$store.commit('LOGOUT')
+        this.connectWebSocket()
         return
       }
       if (!this.wsConnected) return

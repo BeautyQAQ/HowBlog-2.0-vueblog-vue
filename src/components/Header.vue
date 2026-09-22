@@ -51,7 +51,7 @@
                   <span class="info-label">用户 ID:</span> {{ userId }}
                 </div>
               </el-dropdown-item>
-              <el-dropdown-item divided command="logout" icon="el-icon-switch-button">
+              <el-dropdown-item divided command="logout" icon="el-icon-switch-button" :disabled="loggingOut">
                 退出登录
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -74,7 +74,8 @@ export default {
   name: 'AppHeader',
   data() {
     return {
-      keyword: ''
+      keyword: '',
+      loggingOut: false
     }
   },
   computed: {
@@ -93,12 +94,19 @@ export default {
       }
       this.$router.push('/article/create')
     },
-    handleCommand(cmd) {
-      if (cmd === 'logout') {
-        this.$store.dispatch('logout')
-        this.$message.success('已退出登录')
-        if (this.$route.meta.requiresAuth) {
-          this.$router.push('/')
+    async handleCommand(cmd) {
+      if (cmd === 'logout' && !this.loggingOut) {
+        this.loggingOut = true
+        try {
+          await this.$store.dispatch('logout')
+          this.$message.success('已退出登录')
+          if (this.$route.meta.requiresAuth) {
+            this.$router.push('/').catch(() => {})
+          }
+        } catch (error) {
+          this.$message.error('未能确认服务端退出，请稍后重试')
+        } finally {
+          this.loggingOut = false
         }
       }
     }

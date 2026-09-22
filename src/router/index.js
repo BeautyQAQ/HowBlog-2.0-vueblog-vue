@@ -64,11 +64,13 @@ const router = new VueRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  if (store.state.user && !(store.state.user.expiresAt > Date.now())) {
-    store.commit('LOGOUT')
-  }
+router.beforeEach(async (to, from, next) => {
   if (to.matched.some(record => record.meta && record.meta.requiresAuth)) {
+    try {
+      await store.dispatch('ensureSession')
+    } catch (error) {
+      Message.warning('登录已失效，请重新登录')
+    }
     if (!store.getters.isLoggedIn) {
       Message.warning('该功能需要登录后访问')
       next({

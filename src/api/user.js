@@ -11,3 +11,19 @@ export function login(data) {
     data: { mobile: data.mobile, password: data.password }
   })
 }
+
+export function refresh(refreshToken) {
+  return request({
+    url: '/user/refresh',
+    method: 'post',
+    data: { refreshToken }
+  })
+}
+
+export function logout(refreshToken) {
+  return request({
+    url: '/user/logout',
+    method: 'post',
+    data: { refreshToken }
+  })
+}

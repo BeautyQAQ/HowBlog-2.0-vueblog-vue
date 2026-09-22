@@ -1,22 +1,49 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
-import { login as loginApi } from '@/api/user'
+import { login as loginApi, refresh as refreshApi, logout as logoutApi } from '@/api/user'
 
 Vue.use(Vuex)
 
-let storedUser = null
-try {
-  const item = localStorage.getItem('howblog_user')
-  if (item) {
-    storedUser = JSON.parse(item)
+const storageKey = 'howblog_user'
+let refreshPromise = null
+
+function readUser() {
+  try {
+    const user = JSON.parse(localStorage.getItem(storageKey))
+    if (user && user.apiRevision === 7 && user.id && user.token && user.sessionKey &&
+        /^[a-f0-9]{64}$/.test(user.refreshToken) && user.refreshExpiresAt > Date.now()) {
+      return user
+    }
+  } catch (error) {
+    localStorage.removeItem(storageKey)
   }
-} catch (e) {
-  console.error('Failed to parse stored user:', e)
+  localStorage.removeItem(storageKey)
+  return null
 }
 
-if (!storedUser || !storedUser.id || !storedUser.token || !(storedUser.expiresAt > Date.now())) {
-  storedUser = null
-  localStorage.removeItem('howblog_user')
+function credentials(data, startedAt, previous) {
+  if (!data || !data.id || !data.token || !/^[a-f0-9]{64}$/.test(data.refreshToken) ||
+      !(data.expiresIn > 0) || !(data.refreshExpiresIn > 0)) {
+    throw new Error('登录凭据无效，请重新登录')
+  }
+  return {
+    ...data,
+    apiRevision: 7,
+    sessionKey: previous ? previous.sessionKey : crypto.randomUUID(),
+    expiresAt: startedAt + data.expiresIn * 1000,
+    refreshExpiresAt: Math.min(startedAt + data.refreshExpiresIn * 1000,
+      previous ? previous.refreshExpiresAt : Infinity)
+  }
+}
+
+function withSessionLock(callback, required = false) {
+  if (navigator.locks) return navigator.locks.request('howblog-session', callback)
+  if (required) return Promise.reject(new Error('当前浏览器无法安全刷新会话，请重新登录'))
+  return Promise.resolve().then(callback)
+}
+
+function refreshAt(user) {
+  return user.expiresAt - (user.refreshExpiresAt - user.expiresAt > 30000 ? 30000 : 0)
 }
 
 export default new Vuex.Store({
@@ -25,23 +52,24 @@ export default new Vuex.Store({
     const scheduleExpiry = () => {
       clearTimeout(expiryTimer)
       const user = store.state.user
-      if (!user) return
-      const remaining = user.expiresAt - Date.now()
-      if (!(remaining > 0)) {
-        store.commit('LOGOUT')
-        return
-      }
-      expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining, 2147483647))
+      if (!user || user.refreshing) return
+      const remaining = Math.min(refreshAt(user), user.refreshExpiresAt) - Date.now()
+      expiryTimer = setTimeout(() => {
+        store.dispatch('ensureSession').catch(() => {})
+      }, Math.max(0, Math.min(remaining, 2147483647)))
     }
     store.subscribe(scheduleExpiry)
+    window.addEventListener('storage', event => {
+      if (event.key === storageKey || event.key === null) store.commit('SYNC_USER', readUser())
+    })
     scheduleExpiry()
   }],
   state: {
-    user: storedUser
+    user: readUser()
   },
   getters: {
-    isLoggedIn: state => !!(state.user && state.user.id && state.user.token && state.user.expiresAt > Date.now()),
-    token: state => (state.user && state.user.expiresAt > Date.now() ? state.user.token : ''),
+    isLoggedIn: state => !!(state.user && state.user.refreshExpiresAt > Date.now()),
+    token: state => (state.user ? state.user.token : ''),
     user: state => state.user,
     userId: state => (state.user ? state.user.id : ''),
     nickname: state => (state.user ? (state.user.nickname || state.user.mobile) : ''),
@@ -49,30 +77,74 @@ export default new Vuex.Store({
   },
   mutations: {
     SET_USER(state, user) {
-      state.user = user
       if (user) {
-        localStorage.setItem('howblog_user', JSON.stringify(user))
+        localStorage.setItem(storageKey, JSON.stringify(user))
       } else {
-        localStorage.removeItem('howblog_user')
+        localStorage.removeItem(storageKey)
       }
+      state.user = user
+    },
+    SYNC_USER(state, user) {
+      if (JSON.stringify(state.user) !== JSON.stringify(user)) state.user = user
     },
     LOGOUT(state) {
       state.user = null
-      localStorage.removeItem('howblog_user')
+      localStorage.removeItem(storageKey)
     }
   },
   actions: {
     async login({ commit }, userInfo) {
-      const res = await loginApi(userInfo)
-      if (res.flag && res.data && res.data.id && res.data.token && res.data.expiresIn > 0) {
-        const user = { ...res.data, expiresAt: Date.now() + res.data.expiresIn * 1000 }
+      return withSessionLock(async () => {
+        const startedAt = Date.now()
+        const res = await loginApi(userInfo)
+        const user = credentials(res.flag && res.data, startedAt)
         commit('SET_USER', user)
         return user
-      }
-      throw new Error('登录响应缺少有效的访问令牌')
+      })
     },
-    logout({ commit }) {
-      commit('LOGOUT')
+    async ensureSession({ commit }, { force = false, token } = {}) {
+      const current = readUser()
+      commit('SYNC_USER', current)
+      if (!current) return ''
+      if (!current.refreshing && refreshAt(current) > Date.now() &&
+          (!force || (token && current.token !== token))) return current.token
+      if (!refreshPromise) {
+        refreshPromise = withSessionLock(async () => {
+          const user = readUser()
+          commit('SYNC_USER', user)
+          if (!user) return ''
+          if (!user.refreshing && refreshAt(user) > Date.now() &&
+              (!force || (token && user.token !== token))) return user.token
+          try {
+            if (user.refreshExpiresAt - Date.now() < 1000) {
+              commit('LOGOUT')
+              return ''
+            }
+            if (user.refreshing) throw new Error('会话刷新结果未知，请重新登录')
+            commit('SET_USER', { ...user, refreshing: true })
+            const startedAt = Date.now()
+            const res = await refreshApi(user.refreshToken)
+            const next = credentials(res.flag && res.data, startedAt, user)
+            commit('SET_USER', next)
+            return next.token
+          } catch (error) {
+            commit('LOGOUT')
+            throw error
+          }
+        }, true).catch(error => {
+          if (!navigator.locks) commit('LOGOUT')
+          throw error
+        }).finally(() => { refreshPromise = null })
+      }
+      return refreshPromise
+    },
+    async logout({ commit }) {
+      return withSessionLock(async () => {
+        const user = readUser()
+        if (!user) throw new Error('没有可撤销的本地会话，请重新登录')
+        await logoutApi(user.refreshToken)
+        commit('LOGOUT')
+      })
     }
   }
 })
