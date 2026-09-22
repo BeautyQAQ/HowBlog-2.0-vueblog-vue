@@ -14,12 +14,34 @@ try {
   console.error('Failed to parse stored user:', e)
 }
 
+if (!storedUser || !storedUser.id || !storedUser.token || !(storedUser.expiresAt > Date.now())) {
+  storedUser = null
+  localStorage.removeItem('howblog_user')
+}
+
 export default new Vuex.Store({
+  plugins: [store => {
+    let expiryTimer
+    const scheduleExpiry = () => {
+      clearTimeout(expiryTimer)
+      const user = store.state.user
+      if (!user) return
+      const remaining = user.expiresAt - Date.now()
+      if (!(remaining > 0)) {
+        store.commit('LOGOUT')
+        return
+      }
+      expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining, 2147483647))
+    }
+    store.subscribe(scheduleExpiry)
+    scheduleExpiry()
+  }],
   state: {
     user: storedUser
   },
   getters: {
-    isLoggedIn: state => !!(state.user && state.user.id),
+    isLoggedIn: state => !!(state.user && state.user.id && state.user.token && state.user.expiresAt > Date.now()),
+    token: state => (state.user && state.user.expiresAt > Date.now() ? state.user.token : ''),
     user: state => state.user,
     userId: state => (state.user ? state.user.id : ''),
     nickname: state => (state.user ? (state.user.nickname || state.user.mobile) : ''),
@@ -42,11 +64,12 @@ export default new Vuex.Store({
   actions: {
     async login({ commit }, userInfo) {
       const res = await loginApi(userInfo)
-      if (res.flag && res.data) {
-        commit('SET_USER', res.data)
-        return res.data
+      if (res.flag && res.data && res.data.id && res.data.token && res.data.expiresIn > 0) {
+        const user = { ...res.data, expiresAt: Date.now() + res.data.expiresIn * 1000 }
+        commit('SET_USER', user)
+        return user
       }
-      return null
+      throw new Error('登录响应缺少有效的访问令牌')
     },
     logout({ commit }) {
       commit('LOGOUT')

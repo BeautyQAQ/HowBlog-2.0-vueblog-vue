@@ -9,8 +9,11 @@ const service = axios.create({
 
 service.interceptors.request.use(
   config => {
-    if (store.getters.userId) {
-      config.headers['X-User-Id'] = store.getters.userId
+    if (store.state.user && !(store.state.user.expiresAt > Date.now())) {
+      store.commit('LOGOUT')
+    }
+    if (store.getters.token && config.url !== '/user/login') {
+      config.headers.Authorization = `Bearer ${store.getters.token}`
     }
     return config
   },
@@ -32,12 +35,27 @@ service.interceptors.response.use(
           type: 'error',
           duration: 3000
         })
-        return Promise.reject(new Error(res.message || 'Error'))
+        const error = new Error(res.message || '操作失败')
+        error.code = res.code
+        error.response = response
+        return Promise.reject(error)
       }
     }
     return response
   },
   error => {
+    const response = error.response
+    const result = response && response.data
+    if (response && response.status === 401) {
+      const authorization = error.config && error.config.headers && error.config.headers.Authorization
+      if (!authorization || authorization === `Bearer ${store.getters.token}`) {
+        store.commit('LOGOUT')
+      }
+    }
+    if (result && typeof result.flag === 'boolean') {
+      error.code = result.code
+      error.message = result.message || error.message
+    }
     Message({
       message: error.message || '网络连接异常，请稍后重试',
       type: 'error',

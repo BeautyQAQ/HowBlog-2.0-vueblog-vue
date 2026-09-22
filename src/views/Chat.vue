@@ -6,7 +6,7 @@
         <div class="sidebar-header">
           <div class="my-status">
             <span class="status-indicator online"></span>
-            <span class="my-name">{{ currentUsername }}</span>
+            <span class="my-name">{{ nickname || currentUsername }}</span>
             <span class="my-tag">我</span>
           </div>
         </div>
@@ -129,16 +129,15 @@ export default {
       currentTarget: null, // null 表示大厅群聊，string 为私聊用户名
       inputContent: '',
       pingTimer: null,
-      reconnectTimer: null
+      reconnectTimer: null,
+      expiryTimer: null,
+      connectionUserId: ''
     }
   },
   computed: {
-    ...mapGetters(['nickname', 'userId', 'isLoggedIn', 'avatar']),
+    ...mapGetters(['nickname', 'userId', 'isLoggedIn', 'avatar', 'token']),
     currentUsername() {
-      if (this.isLoggedIn) {
-        return this.nickname || this.userId || 'User'
-      }
-      return 'Guest_' + Math.floor(1000 + Math.random() * 9000)
+      return this.connectionUserId || this.userId
     },
     currentMessages() {
       if (this.currentTarget === null) {
@@ -162,9 +161,20 @@ export default {
     connectWebSocket() {
       this.closeWebSocket()
 
+      const user = this.$store.state.user
+      if (!user || !user.token || !(user.expiresAt > Date.now())) {
+        this.$store.commit('LOGOUT')
+        return
+      }
+      this.onlineUsers = []
+      this.connectionUserId = ''
+      this.expiryTimer = setTimeout(() => {
+        this.closeWebSocket()
+        this.$store.commit('LOGOUT')
+      }, Math.min(user.expiresAt - Date.now(), 2147483647))
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
-      const wsUrl = `${protocol}//${host}/im?user=${encodeURIComponent(this.currentUsername)}`
+      const wsUrl = `${protocol}//${host}/im?token=${encodeURIComponent(user.token)}`
 
       this.ws = new WebSocket(wsUrl)
 
@@ -196,16 +206,19 @@ export default {
         }, 5000)
       }
 
-      this.ws.onerror = err => {
-        console.error('WS Error:', err)
+      this.ws.onerror = () => {
         this.wsConnected = false
       }
     },
     closeWebSocket() {
       clearInterval(this.pingTimer)
       clearTimeout(this.reconnectTimer)
+      clearTimeout(this.expiryTimer)
       if (this.ws) {
         this.ws.onclose = null
+        this.ws.onopen = null
+        this.ws.onmessage = null
+        this.ws.onerror = null
         this.ws.close()
         this.ws = null
       }
@@ -218,7 +231,7 @@ export default {
     },
     handleIncomingMessage(data) {
       if (data.type === 'ready') {
-        // 连接准备就绪
+        this.connectionUserId = data.user
       } else if (data.type === 'presence') {
         const { event, user } = data
         if (user && user !== this.currentUsername) {
@@ -247,6 +260,12 @@ export default {
       }
     },
     sendMessage() {
+      if (!this.$store.state.user || !(this.$store.state.user.expiresAt > Date.now())) {
+        this.closeWebSocket()
+        this.$store.commit('LOGOUT')
+        return
+      }
+      if (!this.wsConnected) return
       const content = this.inputContent.trim()
       if (!content) return
 

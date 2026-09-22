@@ -73,12 +73,6 @@
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item label="是否置顶" prop="istop">
-            <el-radio-group v-model="form.istop">
-              <el-radio label="1">置顶</el-radio>
-              <el-radio label="0">普通</el-radio>
-            </el-radio-group>
-          </el-form-item>
         </div>
 
         <div class="form-actions">
@@ -95,7 +89,6 @@
 <script>
 import { getArticleById, addArticle, updateArticle } from '@/api/article'
 import { getLabelList } from '@/api/label'
-import { mapGetters } from 'vuex'
 
 export default {
   name: 'ArticleEdit',
@@ -110,22 +103,20 @@ export default {
         columnid: '',
         image: '',
         content: '',
-        ispublic: '1',
-        istop: '0'
+        ispublic: '1'
       },
       rules: {
         title: [
-          { required: true, message: '请输入文章标题', trigger: 'blur' },
+          { required: true, whitespace: true, message: '请输入文章标题', trigger: 'blur' },
           { min: 2, max: 100, message: '标题长度在 2 到 100 个字符', trigger: 'blur' }
         ],
         content: [
-          { required: true, message: '请输入文章正文内容', trigger: 'blur' }
+          { required: true, whitespace: true, message: '请输入文章正文内容', trigger: 'blur' }
         ]
       }
     }
   },
   computed: {
-    ...mapGetters(['userId']),
     isEdit() {
       return Boolean(this.articleId)
     }
@@ -158,8 +149,7 @@ export default {
             columnid: a.columnid || '',
             image: a.image || '',
             content: a.content || '',
-            ispublic: a.ispublic || '1',
-            istop: a.istop || '0'
+            ispublic: a.ispublic || '1'
           }
         }
       } catch (e) {
@@ -175,10 +165,7 @@ export default {
         this.submitting = true
         try {
           if (this.isEdit) {
-            const res = await updateArticle(this.articleId, {
-              ...this.form,
-              updatetime: new Date()
-            })
+            const res = await updateArticle(this.articleId, { ...this.form })
             if (res && res.flag) {
               this.$message.success('文章修改成功')
               this.$router.push(`/article/${this.articleId}`)
@@ -186,12 +173,12 @@ export default {
           } else {
             const res = await addArticle({
               ...this.form,
-              userid: this.userId || '10001',
               createtime: new Date(),
               updatetime: new Date(),
               visits: 0,
               thumbup: 0,
               comment: 0,
+              istop: '0',
               state: '1'
             })
             if (res && res.flag) {

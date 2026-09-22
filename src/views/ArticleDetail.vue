@@ -95,7 +95,7 @@
             />
             <div class="comment-input-footer">
               <span class="tip" v-if="!isLoggedIn">
-                当前为未登录状态，将以 <strong>游客</strong> 身份发表
+                请先登录
               </span>
               <span class="tip" v-else>
                 以 <strong>{{ nickname }}</strong> 身份发表
@@ -106,7 +106,7 @@
                 :loading="submittingComment"
                 @click="submitComment"
               >
-                发表评论
+                {{ isLoggedIn ? '发表评论' : '登录' }}
               </el-button>
             </div>
           </div>
@@ -270,8 +270,9 @@ export default {
       }
     },
     async submitComment() {
+      if (!this.requireLogin()) return
       const content = this.newCommentContent.trim()
-      if (!content) {
+      if (!content || !String(this.articleId || '').trim()) {
         this.$message.warning('评论内容不能为空')
         return
       }
@@ -280,9 +281,7 @@ export default {
       try {
         const payload = {
           articleid: this.articleId,
-          content: content,
-          userid: this.isLoggedIn ? (this.nickname || this.userId) : '游客',
-          publishdate: new Date()
+          content: content
         }
         const res = await saveComment(payload)
         if (res && res.flag) {
@@ -297,6 +296,7 @@ export default {
       }
     },
     async handleThumbup(comment) {
+      if (!this.requireLogin()) return
       const commentId = comment.id || comment._id
       try {
         const res = await thumbupComment(commentId)
@@ -310,7 +310,13 @@ export default {
     },
     canDeleteComment(comment) {
       if (!this.isLoggedIn) return false
-      return comment.userid === this.userId || comment.userid === this.nickname || this.isAuthor
+      return comment.userid === this.userId
+    },
+    requireLogin() {
+      if (this.$store.state.user && this.$store.state.user.expiresAt > Date.now()) return true
+      this.$store.commit('LOGOUT')
+      this.$router.push({ path: '/login', query: { redirect: this.$route.fullPath } })
+      return false
     },
     handleDeleteComment(commentId) {
       this.$confirm('确定删除该评论吗？', '提示', {

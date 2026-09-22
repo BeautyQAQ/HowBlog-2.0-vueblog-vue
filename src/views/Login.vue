@@ -13,8 +13,8 @@
       <el-form ref="form" :model="form" :rules="rules" class="login-form">
         <el-form-item prop="mobile">
           <el-input
-            v-model="form.mobile"
-            placeholder="手机号 / 账号"
+            v-model.trim="form.mobile"
+            placeholder="手机号"
             prefix-icon="el-icon-mobile-phone"
             clearable
           />
@@ -68,11 +68,10 @@ export default {
       },
       rules: {
         mobile: [
-          { required: true, message: '请输入手机号或账号', trigger: 'blur' }
+          { required: true, whitespace: true, message: '请输入手机号', trigger: 'blur' }
         ],
         password: [
-          { required: true, message: '请输入登录密码', trigger: 'blur' },
-          { min: 6, message: '密码不能少于 6 位', trigger: 'blur' }
+          { required: true, message: '请输入登录密码', trigger: 'blur' }
         ]
       }
     }

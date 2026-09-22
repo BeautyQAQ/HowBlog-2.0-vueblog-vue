@@ -43,12 +43,14 @@ const routes = [
   {
     path: '/labels',
     name: 'LabelManage',
-    component: LabelManage
+    component: LabelManage,
+    meta: { requiresAuth: true }
   },
   {
     path: '/chat',
     name: 'Chat',
-    component: Chat
+    component: Chat,
+    meta: { requiresAuth: true }
   },
   {
     path: '*',
@@ -63,6 +65,9 @@ const router = new VueRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  if (store.state.user && !(store.state.user.expiresAt > Date.now())) {
+    store.commit('LOGOUT')
+  }
   if (to.matched.some(record => record.meta && record.meta.requiresAuth)) {
     if (!store.getters.isLoggedIn) {
       Message.warning('该功能需要登录后访问')
@@ -75,6 +80,12 @@ router.beforeEach((to, from, next) => {
     }
   } else {
     next()
+  }
+})
+
+store.watch(state => state.user, user => {
+  if (!user && router.currentRoute.matched.some(record => record.meta.requiresAuth)) {
+    router.replace({ path: '/login', query: { redirect: router.currentRoute.fullPath } })
   }
 })
 

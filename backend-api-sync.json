@@ -1,0 +1,12 @@
+{
+  "backendApiRevision": 6,
+  "contractVersion": "4.0.0",
+  "latestChangeId": "API-20260922-006",
+  "syncedAt": "2026-09-22",
+  "source": "../HowBlog-2.0-Java/docs/frontend-api-status.json",
+  "liveBackendVerified": true,
+  "liveReadOnlyVerified": true,
+  "liveWriteVerified": true,
+  "verificationScope": "Public reads; authenticated article/comment CRUD and ownership; duplicate likes with MySQL/Redis; temporary ADMIN label CRUD and live role revocation; two-user WebSocket identity, heartbeat, room and private messaging; browser login, article publish/edit/delete, comment create/like/delete, whitespace validation, chat echo and 403 session preservation.",
+  "testDataCleaned": true
+}

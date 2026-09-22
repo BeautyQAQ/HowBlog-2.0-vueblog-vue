@@ -59,6 +59,10 @@ export function deleteArticle(id) {
  * @param {object} conditions 查询条件
  */
 export function searchArticle(page, size, conditions = {}) {
+  if (!Number.isInteger(page) || page < 1 || page > 2147483647 ||
+      !Number.isInteger(size) || size < 1 || size > 100) {
+    return Promise.reject(new RangeError('页码必须为正整数，每页数量必须在 1 到 100 之间'))
+  }
   return request({
     url: `/article/search/${page}/${size}`,
     method: 'post',
