@@ -121,9 +121,10 @@
           <el-pagination
             background
             layout="prev, pager, next, total"
-            :current-page.sync="currentPage"
+            :current-page="currentPage"
             :page-size="pageSize"
-            :total="filteredArticles.length"
+            :total="displayTotal"
+            @current-change="handlePageChange"
           />
         </div>
       </div>
@@ -176,7 +177,7 @@
 </template>
 
 <script>
-import { getArticleList, deleteArticle } from '@/api/article'
+import { getArticleList, searchArticle, deleteArticle } from '@/api/article'
 import { getLabelList } from '@/api/label'
 import { mapGetters } from 'vuex'
 
@@ -190,7 +191,8 @@ export default {
       selectedLabel: '',
       searchKeyword: '',
       currentPage: 1,
-      pageSize: 10
+      pageSize: 10,
+      total: 0
     }
   },
   computed: {
@@ -198,8 +200,7 @@ export default {
     filteredArticles() {
       let list = [...this.articles]
 
-      // 标签过滤
-      if (this.selectedLabel) {
+      if (this.searchKeyword && this.selectedLabel) {
         list = list.filter(a => a.columnid === this.selectedLabel || a.channelid === this.selectedLabel)
       }
 
@@ -224,8 +225,12 @@ export default {
       return list
     },
     paginatedArticles() {
+      if (!this.searchKeyword) return this.filteredArticles
       const start = (this.currentPage - 1) * this.pageSize
       return this.filteredArticles.slice(start, start + this.pageSize)
+    },
+    displayTotal() {
+      return this.searchKeyword ? this.filteredArticles.length : this.total
     }
   },
   watch: {
@@ -234,20 +239,31 @@ export default {
       handler(val) {
         this.searchKeyword = val || ''
         this.currentPage = 1
+        this.fetchArticles()
       }
     }
   },
   created() {
-    this.fetchArticles()
     this.fetchLabels()
   },
   methods: {
     async fetchArticles() {
       this.loading = true
       try {
-        const res = await getArticleList()
-        if (res && res.flag && Array.isArray(res.data)) {
-          this.articles = res.data
+        if (this.searchKeyword) {
+          const res = await getArticleList()
+          if (res && res.flag && Array.isArray(res.data)) {
+            this.articles = res.data
+            this.total = this.filteredArticles.length
+          }
+          return
+        }
+
+        const conditions = this.selectedLabel ? { columnid: this.selectedLabel } : {}
+        const res = await searchArticle(this.currentPage, this.pageSize, conditions)
+        if (res && res.flag && res.data) {
+          this.articles = Array.isArray(res.data.rows) ? res.data.rows : []
+          this.total = Number(res.data.total) || 0
         }
       } catch (e) {
         console.error('Failed to fetch articles:', e)
@@ -268,18 +284,27 @@ export default {
     selectLabel(labelId) {
       this.selectedLabel = labelId
       this.currentPage = 1
+      this.fetchArticles()
     },
     clearLabelFilter() {
       this.selectedLabel = ''
+      this.currentPage = 1
+      this.fetchArticles()
     },
     clearSearchFilter() {
       this.searchKeyword = ''
+      this.currentPage = 1
       this.$router.replace({ path: '/' }).catch(() => {})
     },
     resetAllFilters() {
       this.selectedLabel = ''
       this.searchKeyword = ''
+      this.currentPage = 1
       this.$router.replace({ path: '/' }).catch(() => {})
+    },
+    handlePageChange(page) {
+      this.currentPage = page
+      if (!this.searchKeyword) this.fetchArticles()
     },
     getLabelName(id) {
       const found = this.labels.find(l => l.id === id)

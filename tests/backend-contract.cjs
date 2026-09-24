@@ -187,6 +187,36 @@ async function run() {
   assert(store.getters.isLoggedIn)
   const now = 1000
 
+  let refreshAttempts = 0
+  const rateLimited = sessionHarness(null, {
+    refreshApi: async () => {
+      refreshAttempts++
+      if (refreshAttempts > 1) {
+        return { flag: true, data: { id: '42', token: 'access-rate-limited', expiresIn: 1800,
+          refreshToken: '3'.padStart(64, '0'), refreshExpiresIn: 604800 } }
+      }
+      const error = new Error('Too many requests')
+      error.response = { status: 429, headers: { 'retry-after': '0' } }
+      throw error
+    }
+  })
+  await rateLimited.store.dispatch('login', {})
+  rateLimited.store.commit('SET_USER', { ...rateLimited.store.state.user, expiresAt: 1000 })
+  assert.strictEqual(await rateLimited.store.dispatch('ensureSession'), 'access-rate-limited')
+  assert.strictEqual(rateLimited.store.getters.isLoggedIn, true)
+
+  const stillLimited = sessionHarness(null, {
+    refreshApi: async () => {
+      const error = new Error('Too many requests')
+      error.response = { status: 503, headers: { 'retry-after': '0' } }
+      throw error
+    }
+  })
+  await stillLimited.store.dispatch('login', {})
+  stillLimited.store.commit('SET_USER', { ...stillLimited.store.state.user, expiresAt: 1000 })
+  await assert.rejects(stillLimited.store.dispatch('ensureSession'), error => error.response.status === 503)
+  assert.strictEqual(stillLimited.store.getters.isLoggedIn, true)
+
   const calls = []
   const apiContext = { request: config => { calls.push(config); return Promise.resolve(config) } }
   load('src/api/article.js', apiContext)
@@ -258,7 +288,7 @@ async function run() {
   await header.methods.handleCommand.call(headerState, 'logout')
   assert(!successShown && failureShown)
   assert.strictEqual(headerState.loggingOut, false)
-  console.log('PASS: revision 7 session rotation, cross-tab locking, uncertain refresh, logout, HTTP, validation and WebSocket contracts')
+  console.log('PASS: revision 8 session rotation, rate-limit retry, cross-tab locking, logout, HTTP, validation and WebSocket contracts')
 }
 
 run().catch(error => {

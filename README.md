@@ -32,7 +32,7 @@ HowBlog 2.0 博客系统的前端工程，基于 Vue 2 全家桶与 Element-UI �
 
 ## 前后端接口约定与代理规则
 
-当前已对齐后端契约 **5.0.0 / revision 7**，后端提交 `f983d22`，同步状态见 [backend-api-sync.json](backend-api-sync.json)。后续先读取同级后端工程 `docs/frontend-api-status.json`，再核对 changelog 和当前契约。该版本以当前契约为准，旧版项目指南中的 `X-User-Id` 和 `/im?user=` 已失效。
+当前已对齐后端契约 **6.0.0 / revision 8**，后端提交 `79c4c61`，同步状态见 [backend-api-sync.json](backend-api-sync.json)。后续先读取同级后端工程 `docs/frontend-api-status.json`，再核对 changelog 和当前契约。旧版项目指南中的 `X-User-Id` 和 `/im?user=` 已失效。
 
 登录仅提交 `mobile`、`password`；原子保存 `token`、`refreshToken` 和两个期限，后续请求使用 `Authorization: Bearer <token>`。升级会清除旧版会话缓存，必须重新登录。访问令牌最长 1800 秒，会话绝对有效期 7 天，刷新不延长会话。刷新和退出分别调用 `POST /user/refresh`、`POST /user/logout`，JSON 仅含 `refreshToken`，三个凭据端点不附加访问令牌。
 
@@ -44,7 +44,7 @@ HTTP 401 在同一会话内最多续期并重放一次，切换账号后不重�
 
 令牌轮换后聊天连接自动重建。关闭码 1008 会重新验证会话，无法刷新则回到登录；1011 保留会话并延迟重连；1000 停止自动重连，避免同用户多页面互相抢占连接。
 
-统一错误处理展示 HTTP 400/404/500 返回的业务消息；文章标题/正文、标签名和评论正文不允许纯空白。服务端分页 API 限制页码为正整数、每页 1 到 100 条；首页保留本地分页和关键词筛选，不将其误映射为后端精确匹配搜索。
+统一错误处理展示 HTTP 400/404/500 返回的业务消息；文章标题/正文、标签名和评论正文不允许纯空白。服务端分页 API 限制页码为正整数、每页 1 到 100 条；首页普通浏览和标签筛选使用后端分页，关键词仍使用本地模糊筛选，不将其误映射为后端精确匹配搜索。认证端点按 revision 8 支持 Redis 限流：刷新收到 429/503 时按 Retry-After 有限重试，耗尽后保留本地会话；退出失败不显示为服务端退出成功。
 
 1. **统一返回体格式** (`Result`)：
    ```json

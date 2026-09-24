@@ -1,14 +1,14 @@
 {
-  "backendApiRevision": 7,
-  "contractVersion": "5.0.0",
-  "latestChangeId": "API-20260922-007",
-  "backendCommit": "f983d22",
-  "syncedAt": "2026-09-22",
+  "backendApiRevision": 8,
+  "contractVersion": "6.0.0",
+  "latestChangeId": "API-20260922-008",
+  "backendCommit": "79c4c61",
+  "syncedAt": "2026-09-24",
   "source": "../HowBlog-2.0-Java/docs/frontend-api-status.json",
   "liveBackendVerified": true,
   "liveReadOnlyVerified": true,
   "liveWriteVerified": true,
-  "verificationScope": "Revision 7: public reads through the frontend proxy; real browser login; 16 concurrent ensureSession calls across two tabs produce one refresh; WebSocket identity and reconnect after rotation; browser logout, cross-service access revocation, rejected refresh after logout and idempotent logout. Isolated tests cover uncertain refresh, crash markers, unsupported locks, logout failure, HTTP errors and session-switch retry guards. Prior revision 6 business CRUD and Redis checks were not repeated.",
+  "verificationScope": "Revision 8: public article, paginated search and label reads through the frontend proxy; invalid refresh credential response; CORS preflight exposes Retry-After. Isolated contract tests cover bounded refresh retry after HTTP 429 and preserving the session after retryable 429/503 exhaustion. Authentication rate-limit thresholds were not exhausted during live verification.",
   "testDataCleaned": true,
   "testDataNotes": "No business data created or deleted. The test login session was revoked by logout; authentication session and consumed credential records are retained by the backend. No migration or role assignment performed."
 }

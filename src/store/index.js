@@ -5,12 +5,27 @@ import { login as loginApi, refresh as refreshApi, logout as logoutApi } from '@
 Vue.use(Vuex)
 
 const storageKey = 'howblog_user'
+const apiRevision = 8
+const maxRefreshRateLimitRetries = 1
 let refreshPromise = null
+
+function retryAfterMs(error) {
+  const value = error && error.response && error.response.headers &&
+    error.response.headers['retry-after']
+  const seconds = Number(value)
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1000, 30000) : 5000
+}
+
+function waitForRetry(error) {
+  const delay = retryAfterMs(error)
+  if (!delay) return Promise.resolve()
+  return new Promise(resolve => setTimeout(resolve, delay))
+}
 
 function readUser() {
   try {
     const user = JSON.parse(localStorage.getItem(storageKey))
-    if (user && user.apiRevision === 7 && user.id && user.token && user.sessionKey &&
+    if (user && user.apiRevision === apiRevision && user.id && user.token && user.sessionKey &&
         /^[a-f0-9]{64}$/.test(user.refreshToken) && user.refreshExpiresAt > Date.now()) {
       return user
     }
@@ -28,7 +43,7 @@ function credentials(data, startedAt, previous) {
   }
   return {
     ...data,
-    apiRevision: 7,
+    apiRevision,
     sessionKey: previous ? previous.sessionKey : crypto.randomUUID(),
     expiresAt: startedAt + data.expiresIn * 1000,
     refreshExpiresAt: Math.min(startedAt + data.refreshExpiresIn * 1000,
@@ -123,12 +138,28 @@ export default new Vuex.Store({
             if (user.refreshing) throw new Error('会话刷新结果未知，请重新登录')
             commit('SET_USER', { ...user, refreshing: true })
             const startedAt = Date.now()
-            const res = await refreshApi(user.refreshToken)
+            let res
+            let rateLimitRetries = 0
+            while (true) {
+              try {
+                res = await refreshApi(user.refreshToken)
+                break
+              } catch (error) {
+                const status = error.response && error.response.status
+                if (![429, 503].includes(status) || rateLimitRetries >= maxRefreshRateLimitRetries) {
+                  commit('SET_USER', user)
+                  if ([429, 503].includes(status)) error.preserveSession = true
+                  throw error
+                }
+                rateLimitRetries++
+                await waitForRetry(error)
+              }
+            }
             const next = credentials(res.flag && res.data, startedAt, user)
             commit('SET_USER', next)
             return next.token
           } catch (error) {
-            commit('LOGOUT')
+            if (!error.preserveSession) commit('LOGOUT')
             throw error
           }
         }, true).catch(error => {
