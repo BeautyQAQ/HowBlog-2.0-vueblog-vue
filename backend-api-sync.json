@@ -1,14 +1,15 @@
 {
-  "backendApiRevision": 8,
-  "contractVersion": "6.0.0",
-  "latestChangeId": "API-20260922-008",
+  "backendApiRevision": 9,
+  "contractVersion": "6.0.1",
+  "latestChangeId": "API-20260924-009",
   "backendCommit": "79c4c61",
+  "backendWorkspaceStatus": "revision-9-uncommitted",
   "syncedAt": "2026-09-24",
   "source": "../HowBlog-2.0-Java/docs/frontend-api-status.json",
   "liveBackendVerified": true,
   "liveReadOnlyVerified": true,
   "liveWriteVerified": true,
-  "verificationScope": "Revision 8: public article, paginated search and label reads through the frontend proxy; invalid refresh credential response; CORS preflight exposes Retry-After. Isolated contract tests cover bounded refresh retry after HTTP 429 and preserving the session after retryable 429/503 exhaustion. Authentication rate-limit thresholds were not exhausted during live verification.",
+  "verificationScope": "Revision 9: no frontend request or response shape changes. Revision 8 live proxy and authentication checks remain valid; backend-only comment thumbup consistency fix requires no frontend code change. Frontend contract regression remains isolated to the existing revision 8 coverage.",
   "testDataCleaned": true,
   "testDataNotes": "No business data created or deleted. The test login session was revoked by logout; authentication session and consumed credential records are retained by the backend. No migration or role assignment performed."
 }

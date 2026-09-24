@@ -118,14 +118,16 @@ interface PageResult<T = any> {
 
 ### 4.3 Axios 封装与错误处理原则 (`src/utils/request.js`)
 - `baseURL` 设置为 `/api`，自动由 DevServer 转发到对应后端端口。
-- 请求拦截器：若用户已登录，注入 `X-User-Id` 请求头。
+- 请求拦截器：除登录、刷新和退出外，使用当前会话的 `Authorization: Bearer <token>`；不发送 `X-User-Id` 作为身份依据。
 - 响应拦截器：
-  - 判断 `res.flag === true`（或 `res.code === 20000`）时解包返回数据。
-  - `res.flag === false` 时自动触发 Element UI 的 `Message.error(res.message)`，并返回 `Promise.reject`。
+  - 保留统一 `Result`，按 `flag`、`code` 和 HTTP 状态处理成功与失败。
+  - 同一会话收到 HTTP 401 时最多协调一次刷新和重放；HTTP 403 或业务码 `20003` 只提示权限不足，不清空会话。
+  - 429/503 按 `Retry-After` 做有限刷新重试；退出未收到服务端成功响应时保留本地会话。
   - HTTP 网络层异常统一友好捕获，避免未捕获异常导致界面挂起。
 
 ### 4.4 WebSocket IM 通讯协议 (`src/views/Chat.vue`)
-- 连接端点：`ws://<host>/im?user=<username>`
+- 连接端点：`ws://<host>/im?token=<url-encoded-access-token>`
+- 身份由访问 token 决定，不使用 `user` 查询参数；令牌轮换后使用新访问 token 重连。
 - 消息格式：JSON 字符串
   - **加入房间**：`{ type: "join", room: "lobby" }`
   - **心跳保活**：`{ type: "ping" }` -> 后端返回 `{ type: "pong" }`
