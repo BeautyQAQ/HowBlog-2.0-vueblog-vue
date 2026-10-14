@@ -7,7 +7,7 @@ const service = axios.create({
   timeout: 10000
 })
 
-const credentialEndpoints = ['/user/login', '/user/refresh', '/user/logout']
+const credentialEndpoints = ['/user/login', '/user/register', '/user/refresh', '/user/logout']
 
 service.interceptors.request.use(
   async config => {

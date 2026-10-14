@@ -150,9 +150,13 @@ async function run() {
   const activeToken = store.getters.token
   assert.strictEqual((await requestHandler({ url: '/article', headers: {} })).headers.Authorization, `Bearer ${activeToken}`)
   await assert.rejects(requestHandler({ url: '/article', sessionKey: 'previous-login', headers: {} }))
-  for (const endpoint of ['login', 'refresh', 'logout']) {
+  for (const endpoint of ['login', 'register', 'refresh', 'logout']) {
     assert.strictEqual((await requestHandler({ url: `/user/${endpoint}`,
       headers: { Authorization: 'stale' } })).headers.Authorization, undefined)
+  }
+  for (const endpoint of ['profile', 'password']) {
+    assert.strictEqual((await requestHandler({ url: `/user/${endpoint}`, headers: {} }))
+      .headers.Authorization, `Bearer ${activeToken}`)
   }
   const result = { flag: true, code: 20000, data: [] }
   assert.strictEqual(responseHandler({ data: result }), result)
@@ -178,6 +182,11 @@ async function run() {
     response: { status: 401, data: { flag: false, code: 20003 } } }))
   assert.strictEqual(store.state.user, null)
   await login()
+  const beforePatch = JSON.parse(harness.storage.getItem())
+  store.commit('PATCH_USER', { nickname: 'NewNick', avatar: 'https://example.test/avatar.png' })
+  assert.strictEqual(store.getters.nickname, 'NewNick')
+  assert.strictEqual(JSON.parse(harness.storage.getItem()).nickname, 'NewNick')
+  assert.strictEqual(JSON.parse(harness.storage.getItem()).refreshToken, beforePatch.refreshToken)
   harness.setNow(store.state.user.refreshExpiresAt + 1)
   await store.dispatch('ensureSession')
   assert.strictEqual(store.state.user, null)
@@ -240,6 +249,25 @@ async function run() {
     assert.deepStrictEqual(Object.keys(calls[index].data), ['refreshToken'])
     assert.strictEqual(calls[index].data.refreshToken, 'refresh-credential')
   }
+  await apiContext.register({ mobile: '13900000000', password: 'example-password', nickname: '  Bob  ' })
+  assert.strictEqual(calls[5].url, '/user/register')
+  assert.strictEqual(calls[5].method, 'post')
+  assert.deepStrictEqual(Object.keys(calls[5].data), ['mobile', 'password', 'nickname'])
+  assert.strictEqual(calls[5].data.nickname, 'Bob')
+  await apiContext.register({ mobile: '13900000000', password: 'example-password', nickname: '   ' })
+  assert.deepStrictEqual(Object.keys(calls[6].data), ['mobile', 'password'])
+  await apiContext.getProfile()
+  assert.strictEqual(calls[7].url, '/user/profile')
+  assert.strictEqual(calls[7].method, 'get')
+  await apiContext.updateProfile({ nickname: 'Bob', interest: 'Java' })
+  assert.strictEqual(calls[8].url, '/user/profile')
+  assert.strictEqual(calls[8].method, 'put')
+  assert.deepStrictEqual(Object.keys(calls[8].data), ['nickname', 'interest'])
+  await apiContext.changePassword({ oldPassword: 'old-pass-1', newPassword: 'new-pass-1' })
+  assert.strictEqual(calls[9].url, '/user/password')
+  assert.strictEqual(calls[9].method, 'post')
+  assert.deepStrictEqual(Object.keys(calls[9].data), ['oldPassword', 'newPassword'])
+  assert.strictEqual(calls[9].data.newPassword, 'new-pass-1')
 
   const component = name => load(`src/views/${name}.vue`, { mapGetters: () => ({}) }).result
   const detail = component('ArticleDetail')
@@ -249,6 +277,116 @@ async function run() {
     const data = component(name).data.call({ $route: { params: {} } })
     for (const field of fields) assert(data.rules[field].some(rule => rule.required && rule.whitespace))
   }
+
+  const loginView = component('Login')
+  const loginState = { form: { mobile: '', password: '' }, $route: { query: { mobile: '13900000000' } } }
+  loginView.created.call(loginState)
+  assert.strictEqual(loginState.form.mobile, '13900000000')
+  loginState.$route.query.mobile = 'not-a-mobile'
+  loginState.form.mobile = ''
+  loginView.created.call(loginState)
+  assert.strictEqual(loginState.form.mobile, '')
+
+  let registerRequest = null
+  let registerResponse = () => ({ flag: true, code: 20000, data: null })
+  const registerView = load('src/views/Register.vue', {
+    register: async data => { registerRequest = data; return registerResponse() }
+  }).result
+  const registerState = {
+    form: { mobile: '13900000000', password: 'example-password', confirmPassword: 'example-password', nickname: '' },
+    loading: false,
+    duplicateMobile: false,
+    $route: { query: {} },
+    $refs: { form: { validate: callback => callback(true) } },
+    $message: { success() {}, warning() {} },
+    $store: { dispatch: async () => ({ id: '42' }) },
+    $router: { push: () => Promise.resolve() }
+  }
+  const registerData = registerView.data.call(registerState)
+  const mobileRule = registerData.rules.mobile.find(rule => rule.pattern)
+  assert(mobileRule.pattern.test('13800000000'))
+  assert(!mobileRule.pattern.test('2380000000'))
+  assert(!mobileRule.pattern.test('138000000000'))
+  assert(registerData.rules.password.some(rule => rule.min === 8 && rule.max === 64))
+  assert(registerData.rules.nickname.some(rule => rule.max === 100))
+  let registerMismatch
+  registerData.rules.confirmPassword[1].validator(null, 'different-password', error => { registerMismatch = error })
+  assert(registerMismatch && registerMismatch.message === '两次输入的密码不一致')
+  let registerMatched
+  registerData.rules.confirmPassword[1].validator(null, 'example-password', error => { registerMatched = error })
+  assert.strictEqual(registerMatched, undefined)
+  let registerPushed = null
+  let autoLogin = null
+  registerState.$router.push = value => { registerPushed = value; return Promise.resolve() }
+  registerState.$store.dispatch = async (name, value) => { autoLogin = { name, value }; return { id: '42' } }
+  await registerView.methods.handleRegister.call(registerState)
+  assert.strictEqual(registerRequest.mobile, '13900000000')
+  assert.strictEqual(autoLogin.name, 'login')
+  assert.strictEqual(autoLogin.value.mobile, '13900000000')
+  assert.strictEqual(autoLogin.value.password, 'example-password')
+  assert.strictEqual(registerPushed, '/')
+  assert.strictEqual(registerState.duplicateMobile, false)
+  registerPushed = null
+  autoLogin = null
+  registerResponse = () => { const error = new Error('手机号已注册'); error.code = 20005; throw error }
+  await registerView.methods.handleRegister.call(registerState)
+  assert.strictEqual(registerState.duplicateMobile, true)
+  assert.strictEqual(registerPushed, null)
+  assert.strictEqual(autoLogin, null)
+
+  const profileStub = {
+    $route: { query: {} },
+    passwordForm: { oldPassword: '', newPassword: 'new-pass-1', confirmPassword: '' }
+  }
+  const profileView = load('src/views/Profile.vue', {
+    getProfile: async () => ({ flag: true, data: {} }),
+    updateProfile: async () => ({ flag: true, data: {} }),
+    changePassword: async () => ({ flag: true, data: null })
+  }).result
+  const profileData = profileView.data.call(profileStub)
+  assert.strictEqual(profileData.activeTab, 'profile')
+  assert.strictEqual(profileView.data.call({ $route: { query: { tab: 'password' } }, passwordForm: {} }).activeTab, 'password')
+  assert(profileData.profileRules.email.some(rule => rule.type === 'email'))
+  assert.strictEqual(profileData.profileRules.nickname[0].max, 100)
+  assert.strictEqual(profileData.profileRules.avatar[0].max, 500)
+  assert.strictEqual(profileData.profileRules.interest[0].max, 500)
+  assert.strictEqual(profileData.profileRules.personality[0].max, 500)
+  assert(profileData.passwordRules.newPassword.some(rule => rule.min === 8 && rule.max === 64))
+  const blankErrors = []
+  profileData.passwordRules.newPassword[2].validator(null, '        ', error => blankErrors.push(error))
+  assert(blankErrors[0] && blankErrors[0].message === '不能为纯空白')
+  const passwordMismatch = []
+  profileData.passwordRules.confirmPassword[1].validator(null, 'different', error => passwordMismatch.push(error))
+  assert(passwordMismatch[0] && passwordMismatch[0].message === '两次输入的新密码不一致')
+  const passwordMatched = []
+  profileData.passwordRules.confirmPassword[1].validator(null, 'new-pass-1', error => passwordMatched.push(error))
+  assert.strictEqual(passwordMatched[0], undefined)
+  const payloadBase = { nickname: 'Alice', sex: '女', birthday: null, email: '', avatar: '', interest: '', personality: '' }
+  const built = profileView.methods.buildPayload.call({
+    form: { ...payloadBase, nickname: ' Bob ' },
+    profile: { ...payloadBase }
+  })
+  assert.deepStrictEqual(Object.keys(built.payload), ['nickname'])
+  assert.strictEqual(built.payload.nickname, 'Bob')
+  const emptyBuild = profileView.methods.buildPayload.call({ form: { ...payloadBase }, profile: { ...payloadBase } })
+  assert.strictEqual(Object.keys(emptyBuild.payload).length, 0)
+  const clearedBuild = profileView.methods.buildPayload.call({
+    form: { ...payloadBase, nickname: '' },
+    profile: { ...payloadBase }
+  })
+  assert(clearedBuild.error.includes('昵称'))
+  assert.strictEqual(clearedBuild.payload, undefined)
+  const birthdayProfile = { ...payloadBase, birthday: '2020-01-01T00:00:00.000+00:00' }
+  const birthdayBuild = profileView.methods.buildPayload.call({
+    form: { ...payloadBase, birthday: 1700000000000 },
+    profile: birthdayProfile
+  })
+  assert.strictEqual(birthdayBuild.payload.birthday, 1700000000000)
+  const clearedBirthday = profileView.methods.buildPayload.call({
+    form: { ...payloadBase, birthday: null },
+    profile: birthdayProfile
+  })
+  assert(clearedBirthday.error.includes('生日'))
 
   let socketUrl
   const chat = load('src/views/Chat.vue', {
@@ -288,7 +426,17 @@ async function run() {
   await header.methods.handleCommand.call(headerState, 'logout')
   assert(!successShown && failureShown)
   assert.strictEqual(headerState.loggingOut, false)
-  console.log('PASS: revision 8 session rotation, rate-limit retry, cross-tab locking, logout, HTTP, validation and WebSocket contracts')
+  let headerPushed = null
+  const headerNav = {
+    ...header.data(),
+    $router: { push(value) { headerPushed = value; return Promise.resolve() } }
+  }
+  await header.methods.handleCommand.call(headerNav, 'profile')
+  assert.strictEqual(headerPushed, '/profile')
+  await header.methods.handleCommand.call(headerNav, 'password')
+  assert.strictEqual(headerPushed.path, '/profile')
+  assert.strictEqual(headerPushed.query.tab, 'password')
+  console.log('PASS: revision 15 register/profile/password contracts, session rotation, rate-limit retry, cross-tab locking, logout, HTTP, validation and WebSocket contracts')
 }
 
 run().catch(error => {

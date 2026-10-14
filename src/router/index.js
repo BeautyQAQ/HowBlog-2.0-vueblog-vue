@@ -5,6 +5,8 @@ import { Message } from 'element-ui'
 
 import Home from '@/views/Home.vue'
 import Login from '@/views/Login.vue'
+import Register from '@/views/Register.vue'
+import Profile from '@/views/Profile.vue'
 import ArticleDetail from '@/views/ArticleDetail.vue'
 import ArticleEdit from '@/views/ArticleEdit.vue'
 import LabelManage from '@/views/LabelManage.vue'
@@ -44,6 +46,17 @@ const routes = [
     path: '/labels',
     name: 'LabelManage',
     component: LabelManage,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: Register
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: Profile,
     meta: { requiresAuth: true }
   },
   {

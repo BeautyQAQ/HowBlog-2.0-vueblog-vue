@@ -40,6 +40,11 @@
           登 录
         </el-button>
 
+        <div class="register-link">
+          还没有账号？
+          <router-link to="/register">立即注册</router-link>
+        </div>
+
         <div class="quick-fill">
           <span class="quick-label">快捷填入测试账号：</span>
           <div class="quick-buttons">
@@ -74,6 +79,12 @@ export default {
           { required: true, message: '请输入登录密码', trigger: 'blur' }
         ]
       }
+    }
+  },
+  created() {
+    const mobile = this.$route && this.$route.query ? this.$route.query.mobile : ''
+    if (typeof mobile === 'string' && /^1\d{10}$/.test(mobile)) {
+      this.form.mobile = mobile
     }
   },
   methods: {
@@ -178,5 +189,18 @@ export default {
 .quick-buttons {
   display: flex;
   gap: 8px;
+}
+
+.register-link {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+  color: #909399;
+}
+
+.register-link a {
+  color: #409eff;
+  text-decoration: none;
+  font-weight: 500;
 }
 </style>

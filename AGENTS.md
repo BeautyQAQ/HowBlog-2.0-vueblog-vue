@@ -25,7 +25,7 @@
 | **标签服务** | `how_base` | `9001` | `/api/label` | `/label` | 标签增删改查、推荐状态管理 |
 | **文章服务** | `how_article` | `9004` | `/api/article` | `/article` | 文章增删改查、条件分页检索 |
 | **评论服务** | `how_article` | `9004` | `/api/comment` | `/comment` | 评论增删改查、文章评论列表、点赞 |
-| **用户服务** | `how_user` | `9008` | `/api/user` | `/user` | 用户登录认证（`/user/login`） |
+| **用户服务** | `how_user` | `9008` | `/api/user` | `/user` | 用户认证与资料（登录、注册、资料、密码、刷新、退出） |
 | **即时通讯** | `how_user` | `9008` | `/im` | `/im` (WS) | WebSocket 聊天室与点对点私聊 |
 
 ### 代理规则定义 (`vue.config.js`)
@@ -85,6 +85,8 @@ HowBlog-2.0-vueblog-vue/
 │   │   ├── ArticleEdit.vue    # 文章发布与编辑页
 │   │   ├── LabelManage.vue    # 标签库管理页
 │   │   ├── Login.vue          # 用户登录页
+│   │   ├── Register.vue       # 用户注册页（成功后自动登录）
+│   │   ├── Profile.vue        # 个人中心（资料修改、修改密码）
 │   │   └── Chat.vue           # WebSocket 在线即时通讯聊天室
 │   ├── App.vue                # 根组件与主布局
 │   └── main.js                # 前端入口文件
@@ -102,7 +104,7 @@ HowBlog-2.0-vueblog-vue/
 ```typescript
 interface Result<T = any> {
   flag: boolean;      // 业务操作成功与否
-  code: number;       // 状态码：20000(成功), 20001(通用失败), 20002(登录失败), 20004(重复点赞/错误)
+  code: number;       // 状态码：20000(成功), 20001(通用失败), 20002(登录/旧密码错误), 20004(重复点赞/错误), 20005(手机号已注册/重复操作)
   message: string;    // 提示信息
   data: T;            // 业务承载数据
 }
@@ -118,7 +120,7 @@ interface PageResult<T = any> {
 
 ### 4.3 Axios 封装与错误处理原则 (`src/utils/request.js`)
 - `baseURL` 设置为 `/api`，自动由 DevServer 转发到对应后端端口。
-- 请求拦截器：除登录、刷新和退出外，使用当前会话的 `Authorization: Bearer <token>`；不发送 `X-User-Id` 作为身份依据。
+- 请求拦截器：除登录、注册、刷新和退出外，使用当前会话的 `Authorization: Bearer <token>`；不发送 `X-User-Id` 作为身份依据。
 - 响应拦截器：
   - 保留统一 `Result`，按 `flag`、`code` 和 HTTP 状态处理成功与失败。
   - 同一会话收到 HTTP 401 时最多协调一次刷新和重放；HTTP 403 或业务码 `20003` 只提示权限不足，不清空会话。
@@ -137,6 +139,16 @@ interface PageResult<T = any> {
   - **接收事件**：
     - 上下线通知：`{ type: "presence", event: "online" | "offline", user: "..." }`
     - 消息到达：`{ type: "message", from: "...", to?: "...", room?: "...", content: "...", timestamp: "..." }`
+
+### 4.5 用户注册、资料与密码接口
+
+当前已对齐契约 `6.5.0` / revision `15`。新增能力：
+
+- `POST /user/register`（公开）：请求体 `mobile`（11 位、以 `1` 开头）、`password`（8~64 位，不能为纯空白）、可选 `nickname`（≤100，去除首尾空白）。成功 `20000` 只创建账号，前端随后调用登录接口获取凭据；手机号已注册返回 `20005`「手机号已注册」，引导登录或换号；参数不符 `400/20001`；`429/503` 按 `Retry-After` 等待后有限重试。注册请求不携带访问令牌，也不触发本地会话刷新。
+- `GET /user/profile`（需认证）：返回本人资料安全视图（不含密码）。
+- `PUT /user/profile`（需认证）：部分更新，只发送变更字段，未提供字段保留原值；`id`、`mobile`、密码、计数与时间统计字段不可修改；字符串字段不能为纯空白且不支持清空已有内容；`email` 需为合法邮箱；`birthday` 接受日期字符串或毫秒时间戳。成功后用响应 `data` 覆盖本地资料，并同步 Vuex 会话中的昵称与头像。
+- `POST /user/password`（需认证）：请求体 `oldPassword`、`newPassword`（8~64 位）；旧密码错误返回 `20002`「旧密码不正确」；成功后其他设备的所有会话立即被撤销（需要重新登录），发起修改的当前会话保持有效，前端提示其他设备需要重新登录即可。
+- 注册与修改密码均受来源 IP 限流，`429` 按 `Retry-After` 等待后重试；前端不得硬编码倒计时。
 
 ---
 

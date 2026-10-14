@@ -51,7 +51,13 @@
                   <span class="info-label">用户 ID:</span> {{ userId }}
                 </div>
               </el-dropdown-item>
-              <el-dropdown-item divided command="logout" icon="el-icon-switch-button" :disabled="loggingOut">
+              <el-dropdown-item divided command="profile" icon="el-icon-user">
+                个人资料
+              </el-dropdown-item>
+              <el-dropdown-item command="password" icon="el-icon-key">
+                修改密码
+              </el-dropdown-item>
+              <el-dropdown-item command="logout" icon="el-icon-switch-button" :disabled="loggingOut">
                 退出登录
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -60,6 +66,9 @@
         <template v-else>
           <el-button size="small" type="text" @click="$router.push('/login')">
             登录
+          </el-button>
+          <el-button size="small" type="primary" plain round @click="$router.push('/register')">
+            注册
           </el-button>
         </template>
       </div>
@@ -95,6 +104,13 @@ export default {
       this.$router.push('/article/create')
     },
     async handleCommand(cmd) {
+      if (cmd === 'profile' || cmd === 'password') {
+        const target = cmd === 'password'
+          ? { path: '/profile', query: { tab: 'password' } }
+          : '/profile'
+        this.$router.push(target).catch(() => {})
+        return
+      }
       if (cmd === 'logout' && !this.loggingOut) {
         this.loggingOut = true
         try {

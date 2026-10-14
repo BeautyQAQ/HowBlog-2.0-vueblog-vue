@@ -1,15 +1,15 @@
 {
-  "backendApiRevision": 9,
-  "contractVersion": "6.0.1",
-  "latestChangeId": "API-20260924-009",
-  "backendCommit": "8f37bbd",
-  "backendWorkspaceStatus": "revision-9-committed",
-  "syncedAt": "2026-09-24",
+  "backendApiRevision": 15,
+  "contractVersion": "6.5.0",
+  "latestChangeId": "API-20261014-015",
+  "backendCommit": "39bb559",
+  "backendWorkspaceStatus": "revision-15-committed",
+  "syncedAt": "2026-10-14",
   "source": "../HowBlog-2.0-Java/docs/frontend-api-status.json",
   "liveBackendVerified": true,
   "liveReadOnlyVerified": true,
   "liveWriteVerified": true,
-  "verificationScope": "Revision 9: no frontend request or response shape changes. Revision 8 live proxy and authentication checks remain valid; backend-only comment thumbup consistency fix requires no frontend code change. Frontend contract regression remains isolated to the existing revision 8 coverage.",
+  "verificationScope": "Revisions 10-15: no breaking changes. Integrated POST /user/register (auto login after success, 20005 duplicate-mobile guidance), GET/PUT /user/profile (partial update, changed fields only, no clearing of existing values) and POST /user/password (other-session revocation messaging). Live end-to-end through the dev-server proxy on 2026-10-14: register 20000 / duplicate 20005 / invalid 400; two logins; profile read without password field and partial update with id/mobile/fanscount ignored; invalid email 400/20001; password wrong-old 20002, short new 400/20001, change 20000 revokes the other session (profile and refresh both 401/20003) while the current session stays valid; old password rejected 20002, new password login 20000; X-Request-Id present on responses. npm test contract regression and production build pass.",
   "testDataCleaned": true,
-  "testDataNotes": "No business data created or deleted. The test login session was revoked by logout; authentication session and consumed credential records are retained by the backend. No migration or role assignment performed."
+  "testDataNotes": "One temporary user created through /user/register; its rows were deleted by primary key (tb_user plus its tb_auth_session and tb_auth_refresh_token rows) via DBX, and the tb_user count returned to the baseline of 2. No pre-existing rows were modified or deleted; no migration or role assignment performed. Shared test-environment Redis rate-limit keys expire within the 60-second window."
 }

@@ -102,6 +102,12 @@ export default new Vuex.Store({
     SYNC_USER(state, user) {
       if (JSON.stringify(state.user) !== JSON.stringify(user)) state.user = user
     },
+    PATCH_USER(state, fields) {
+      if (!state.user) return
+      const next = { ...state.user, ...fields }
+      localStorage.setItem(storageKey, JSON.stringify(next))
+      state.user = next
+    },
     LOGOUT(state) {
       state.user = null
       localStorage.removeItem(storageKey)
