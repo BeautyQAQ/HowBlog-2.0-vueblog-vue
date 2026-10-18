@@ -32,7 +32,7 @@ HowBlog 2.0 博客系统的前端工程，基于 Vue 2 全家桶与 Element-UI �
 
 ## 前后端接口约定与代理规则
 
-当前已对齐后端契约 **6.5.0 / revision 15**，后端基础提交 `39bb559`，同步状态见 [backend-api-sync.json](backend-api-sync.json)。后续先读取同级后端工程 `docs/frontend-api-status.json`，再核对 changelog 和当前契约。旧版项目指南中的 `X-User-Id` 和 `/im?user=` 已失效。revision 10-15 无破坏性变更：revision 10（跨域来源与服务端口环境变量）、revision 11（`X-Request-Id` 响应头与 `/actuator/health` 健康检查）、revision 14（手机号数据库唯一约束）前端无需改动；revision 12、13、15 新增注册、个人资料与修改密码能力，已接入对应页面。
+当前已对齐后端契约 **6.11.0 / revision 21**，后端基础提交 `aa7efe9`，同步状态见 [backend-api-sync.json](backend-api-sync.json)。后续先读取同级后端工程 `docs/frontend-api-status.json`，再核对 changelog 和当前契约。旧版项目指南中的 `X-User-Id` 和 `/im?user=` 已失效。revision 10-15 的认证与配置能力保持不变；revision 16-21 已接入文章草稿/发布/下架/提交审核、文章状态可见性、文章点赞、文章标签 `labelIds`、用户关注/取关与粉丝/关注分页列表，以及管理员审核中心。新建文章先保存为草稿，用户可从“我的文章”进入继续编辑；审核中心由后端权限决定，普通用户访问时保留会话并显示权限错误。
 
 登录仅提交 `mobile`、`password`；原子保存 `token`、`refreshToken` 和两个期限，后续请求使用 `Authorization: Bearer <token>`。升级会清除旧版会话缓存，必须重新登录。访问令牌最长 1800 秒，会话绝对有效期 7 天，刷新不延长会话。刷新和退出分别调用 `POST /user/refresh`、`POST /user/logout`，JSON 仅含 `refreshToken`，三个凭据端点不附加访问令牌。
 
@@ -138,7 +138,7 @@ npm run build
 npm test
 ```
 
-检查原子凭据保存、单飞与跨标签页刷新、刷新超时和崩溃标记、绝对到期、退出失败保留状态、401 重放与账号切换保护、错误响应（含 403 保留登录态）、分页边界、表单空白校验、评论权限及 WebSocket URL/身份/重连，以及 revision 15 契约：注册表单校验与 20005 引导、注册成功后的自动登录、资料部分更新载荷（仅变更字段、不支持清空、忽略不可修改字段）、修改密码表单校验与凭据端点划分（注册不携带访问令牌，资料与密码接口携带）。该检查使用隔离依赖，不替代真实后端 MySQL/Redis 联调。
+检查原子凭据保存、单飞与跨标签页刷新、刷新超时和崩溃标记、绝对到期、退出失败保留状态、401 重放与账号切换保护、错误响应（含 403 保留登录态）、分页边界、表单空白校验、评论权限及 WebSocket URL/身份/重连，以及 revision 21 契约：文章生命周期和标签请求、文章点赞、关注/取关与粉丝/关注分页、草稿保存跳转、revision 15 认证能力。该检查使用隔离依赖，不替代真实后端 MySQL/Redis 联调。
 
 2026-09-22 revision 7 验收：后端快进更新至 `f983d22`；JDK 21 下 Maven 全模块 `install` 成功，118 项测试中 116 项通过、2 项外部数据库测试跳过。前端契约测试和生产构建通过，构建保留依赖包体积警告。三个后端服务已统一重启，前端继续运行于 `http://localhost:8080/`。
 

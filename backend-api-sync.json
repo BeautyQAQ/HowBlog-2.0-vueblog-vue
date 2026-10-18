@@ -1,15 +1,15 @@
 {
-  "backendApiRevision": 15,
-  "contractVersion": "6.5.0",
-  "latestChangeId": "API-20261014-015",
-  "backendCommit": "39bb559",
-  "backendWorkspaceStatus": "revision-15-committed",
-  "syncedAt": "2026-10-14",
+  "backendApiRevision": 21,
+  "contractVersion": "6.11.0",
+  "latestChangeId": "API-20261018-021",
+  "backendCommit": "aa7efe9",
+  "backendWorkspaceStatus": "revision-21-committed",
+  "syncedAt": "2026-10-18",
   "source": "../HowBlog-2.0-Java/docs/frontend-api-status.json",
-  "liveBackendVerified": true,
-  "liveReadOnlyVerified": true,
-  "liveWriteVerified": true,
-  "verificationScope": "Revisions 10-15: no breaking changes. Integrated POST /user/register (auto login after success, 20005 duplicate-mobile guidance), GET/PUT /user/profile (partial update, changed fields only, no clearing of existing values) and POST /user/password (other-session revocation messaging). Live end-to-end through the dev-server proxy on 2026-10-14: register 20000 / duplicate 20005 / invalid 400; two logins; profile read without password field and partial update with id/mobile/fanscount ignored; invalid email 400/20001; password wrong-old 20002, short new 400/20001, change 20000 revokes the other session (profile and refresh both 401/20003) while the current session stays valid; old password rejected 20002, new password login 20000; X-Request-Id present on responses. npm test contract regression and production build pass.",
+  "liveBackendVerified": false,
+  "liveReadOnlyVerified": false,
+  "liveWriteVerified": false,
+  "verificationScope": "Revisions 16-21 integrated locally: article draft and lifecycle actions, review actions, article visits/thumbup, follow lists, article labelIds and frontend navigation. npm test and npm run build pass. Live backend/browser verification for revisions 16-21 has not been run in this sync.",
   "testDataCleaned": true,
-  "testDataNotes": "One temporary user created through /user/register; its rows were deleted by primary key (tb_user plus its tb_auth_session and tb_auth_refresh_token rows) via DBX, and the tb_user count returned to the baseline of 2. No pre-existing rows were modified or deleted; no migration or role assignment performed. Shared test-environment Redis rate-limit keys expire within the 60-second window."
+  "testDataNotes": "No backend live-write verification was performed in this frontend sync; no new backend test data, migration or role assignment was created."
 }

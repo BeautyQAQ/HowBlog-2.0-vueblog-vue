@@ -26,12 +26,22 @@
         </el-form-item>
 
         <div class="form-row">
-          <el-form-item label="所属标签 / 专栏" prop="columnid" class="flex-1">
-            <el-select
+          <el-form-item label="所属专栏 ID" prop="columnid" class="flex-1">
+            <el-input
               v-model="form.columnid"
-              placeholder="请选择标签"
+              placeholder="可选"
+              clearable
+            />
+          </el-form-item>
+
+          <el-form-item label="文章标签" prop="labelIds" class="flex-2">
+            <el-select
+              v-model="form.labelIds"
+              placeholder="可选择多个标签"
               style="width: 100%"
               filterable
+              multiple
+              collapse-tags
             >
               <el-option
                 v-for="l in labels"
@@ -41,15 +51,15 @@
               />
             </el-select>
           </el-form-item>
-
-          <el-form-item label="封面图片地址" prop="image" class="flex-2">
-            <el-input
-              v-model="form.image"
-              placeholder="请输入图片 URL（如 https://...）"
-              clearable
-            />
-          </el-form-item>
         </div>
+
+        <el-form-item label="封面图片地址" prop="image">
+          <el-input
+            v-model="form.image"
+            placeholder="请输入图片 URL（如 https://...）"
+            clearable
+          />
+        </el-form-item>
 
         <div v-if="form.image" class="cover-preview">
           <span class="preview-label">封面预览：</span>
@@ -77,9 +87,40 @@
 
         <div class="form-actions">
           <el-button type="primary" size="medium" :loading="submitting" @click="submitForm">
-            {{ isEdit ? '保存修改' : '立即发布' }}
+            {{ isEdit ? '保存修改' : '保存草稿' }}
           </el-button>
           <el-button size="medium" @click="$router.push('/')">取消</el-button>
+        </div>
+
+        <div v-if="isEdit" class="lifecycle-actions">
+          <span class="state-hint">当前状态：{{ stateText }}</span>
+          <el-button
+            v-if="articleState === '0'"
+            type="success"
+            size="small"
+            :loading="submitting"
+            @click="transitionArticle('publish')"
+          >
+            直接发布
+          </el-button>
+          <el-button
+            v-if="articleState === '0'"
+            type="warning"
+            size="small"
+            :loading="submitting"
+            @click="transitionArticle('submit')"
+          >
+            提交审核
+          </el-button>
+          <el-button
+            v-if="articleState === '1'"
+            type="warning"
+            size="small"
+            :loading="submitting"
+            @click="transitionArticle('unpublish')"
+          >
+            下架
+          </el-button>
         </div>
       </el-form>
     </el-card>
@@ -87,7 +128,7 @@
 </template>
 
 <script>
-import { getArticleById, addArticle, updateArticle } from '@/api/article'
+import { getArticleById, addArticle, updateArticle, publishArticle, unpublishArticle, submitArticle } from '@/api/article'
 import { getLabelList } from '@/api/label'
 
 export default {
@@ -98,9 +139,11 @@ export default {
       labels: [],
       loading: false,
       submitting: false,
+      articleState: null,
       form: {
         title: '',
         columnid: '',
+        labelIds: [],
         image: '',
         content: '',
         ispublic: '1'
@@ -119,6 +162,13 @@ export default {
   computed: {
     isEdit() {
       return Boolean(this.articleId)
+    },
+    stateText() {
+      return {
+        '0': '草稿',
+        '1': '已发布',
+        '2': '待审核'
+      }[this.articleState] || '未知'
     }
   },
   created() {
@@ -147,10 +197,12 @@ export default {
           this.form = {
             title: a.title || '',
             columnid: a.columnid || '',
+            labelIds: Array.isArray(a.labelIds) ? [...a.labelIds] : [],
             image: a.image || '',
             content: a.content || '',
             ispublic: a.ispublic || '1'
           }
+          this.articleState = String(a.state == null ? '0' : a.state)
         }
       } catch (e) {
         console.error(e)
@@ -158,40 +210,56 @@ export default {
         this.loading = false
       }
     },
-    submitForm() {
-      this.$refs.form.validate(async valid => {
-        if (!valid) return
-
-        this.submitting = true
-        try {
-          if (this.isEdit) {
-            const res = await updateArticle(this.articleId, { ...this.form })
-            if (res && res.flag) {
-              this.$message.success('文章修改成功')
-              this.$router.push(`/article/${this.articleId}`)
-            }
-          } else {
-            const res = await addArticle({
-              ...this.form,
-              createtime: new Date(),
-              updatetime: new Date(),
-              visits: 0,
-              thumbup: 0,
-              comment: 0,
-              istop: '0',
-              state: '1'
-            })
-            if (res && res.flag) {
-              this.$message.success('文章发布成功')
-              this.$router.push('/')
-            }
-          }
-        } catch (e) {
-          console.error(e)
-        } finally {
-          this.submitting = false
-        }
+    validateForm() {
+      return new Promise(resolve => {
+        this.$refs.form.validate(valid => resolve(valid))
       })
+    },
+    async submitForm() {
+      if (!await this.validateForm()) return
+
+      this.submitting = true
+      try {
+        const res = this.isEdit
+          ? await updateArticle(this.articleId, { ...this.form })
+          : await addArticle({ ...this.form })
+        if (res && res.flag) {
+          this.$message.success(this.isEdit ? '文章修改成功' : '草稿已保存')
+          if (this.isEdit) {
+            this.$router.push(`/article/${this.articleId}`)
+          } else {
+            this.$router.push({ path: '/', query: { mine: '1' } })
+          }
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        this.submitting = false
+      }
+    },
+    async transitionArticle(action) {
+      if (!this.isEdit || !await this.validateForm()) return
+
+      this.submitting = true
+      try {
+        const saved = await updateArticle(this.articleId, { ...this.form })
+        if (!saved || !saved.flag) return
+
+        const transitions = {
+          publish: publishArticle,
+          unpublish: unpublishArticle,
+          submit: submitArticle
+        }
+        const res = await transitions[action](this.articleId)
+        if (res && res.flag) {
+          this.articleState = action === 'publish' ? '1' : action === 'submit' ? '2' : '0'
+          this.$message.success(res.message || '文章状态已更新')
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        this.submitting = false
+      }
     }
   }
 }
@@ -266,5 +334,21 @@ export default {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #ebeef5;
+}
+
+.lifecycle-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #ebeef5;
+}
+
+.state-hint {
+  color: #606266;
+  font-size: 13px;
+  margin-right: auto;
 }
 </style>

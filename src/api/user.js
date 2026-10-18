@@ -77,3 +77,55 @@ export function changePassword(data) {
     data: { oldPassword: data.oldPassword, newPassword: data.newPassword }
   })
 }
+
+function validatePage(page, size) {
+  if (!Number.isInteger(page) || page < 1 || page > 2147483647 ||
+      !Number.isInteger(size) || size < 1 || size > 100) {
+    return Promise.reject(new RangeError('页码必须为正整数，每页数量必须在 1 到 100 之间'))
+  }
+  return null
+}
+
+/**
+ * 关注用户
+ */
+export function followUser(userId) {
+  return request({
+    url: `/user/follow/${userId}`,
+    method: 'put'
+  })
+}
+
+/**
+ * 取消关注用户
+ */
+export function unfollowUser(userId) {
+  return request({
+    url: `/user/follow/${userId}`,
+    method: 'delete'
+  })
+}
+
+/**
+ * 查询用户粉丝
+ */
+export function getUserFans(userId, page, size) {
+  const validation = validatePage(page, size)
+  if (validation) return validation
+  return request({
+    url: `/user/${userId}/fans/${page}/${size}`,
+    method: 'get'
+  })
+}
+
+/**
+ * 查询用户关注
+ */
+export function getUserFollows(userId, page, size) {
+  const validation = validatePage(page, size)
+  if (validation) return validation
+  return request({
+    url: `/user/${userId}/follows/${page}/${size}`,
+    method: 'get'
+  })
+}

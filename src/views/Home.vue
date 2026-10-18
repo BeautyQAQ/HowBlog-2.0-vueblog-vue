@@ -4,8 +4,12 @@
       <!-- 左侧主要文章列表 -->
       <div class="article-list-section">
         <!-- 顶部筛选与搜索状态 -->
-        <div class="filter-header" v-if="selectedLabel || searchKeyword">
+        <div class="filter-header" v-if="selectedLabel || searchKeyword || showMine">
           <div class="current-filter">
+            <span v-if="showMine" class="filter-tag">
+              我的文章
+              <i class="el-icon-close" @click="clearMineFilter"></i>
+            </span>
             <span v-if="selectedLabel" class="filter-tag">
               标签: <strong>{{ getLabelName(selectedLabel) }}</strong>
               <i class="el-icon-close" @click="clearLabelFilter"></i>
@@ -46,6 +50,9 @@
             <div class="card-body">
               <div class="card-meta">
                 <span v-if="article.istop === '1'" class="badge-top">置顶</span>
+                <span v-if="isAuthor(article)" class="badge-state">
+                  {{ getStateText(article.state) }}
+                </span>
                 <span class="meta-item">
                   <i class="el-icon-user"></i>
                   {{ article.userid || '匿名作者' }}
@@ -57,6 +64,13 @@
                 </span>
                 <span v-if="article.columnid" class="meta-label">
                   {{ getLabelName(article.columnid) }}
+                </span>
+                <span
+                  v-for="labelId in article.labelIds || []"
+                  :key="`article-label-${article.id}-${labelId}`"
+                  class="meta-label"
+                >
+                  {{ getLabelName(labelId) }}
                 </span>
               </div>
 
@@ -197,11 +211,14 @@ export default {
   },
   computed: {
     ...mapGetters(['userId', 'isLoggedIn']),
+    showMine() {
+      return this.$route.query.mine === '1' && this.isLoggedIn
+    },
     filteredArticles() {
       let list = [...this.articles]
 
-      if (this.searchKeyword && this.selectedLabel) {
-        list = list.filter(a => a.columnid === this.selectedLabel || a.channelid === this.selectedLabel)
+      if (this.selectedLabel) {
+        list = list.filter(a => Array.isArray(a.labelIds) && a.labelIds.includes(this.selectedLabel))
       }
 
       // 关键词过滤
@@ -241,6 +258,12 @@ export default {
         this.currentPage = 1
         this.fetchArticles()
       }
+    },
+    '$route.query.mine': {
+      handler() {
+        this.currentPage = 1
+        this.fetchArticles()
+      }
     }
   },
   created() {
@@ -251,15 +274,25 @@ export default {
       this.loading = true
       try {
         if (this.searchKeyword) {
-          const res = await getArticleList()
+          const conditions = {}
+          if (this.showMine) conditions.userid = this.userId
+          if (this.selectedLabel) conditions.labelIds = [this.selectedLabel]
+          const res = this.showMine || this.selectedLabel
+            ? await searchArticle(1, 100, conditions)
+            : await getArticleList()
           if (res && res.flag && Array.isArray(res.data)) {
             this.articles = res.data
+            this.total = this.filteredArticles.length
+          } else if (res && res.flag && res.data) {
+            this.articles = Array.isArray(res.data.rows) ? res.data.rows : []
             this.total = this.filteredArticles.length
           }
           return
         }
 
-        const conditions = this.selectedLabel ? { columnid: this.selectedLabel } : {}
+        const conditions = {}
+        if (this.selectedLabel) conditions.labelIds = [this.selectedLabel]
+        if (this.showMine) conditions.userid = this.userId
         const res = await searchArticle(this.currentPage, this.pageSize, conditions)
         if (res && res.flag && res.data) {
           this.articles = Array.isArray(res.data.rows) ? res.data.rows : []
@@ -294,7 +327,13 @@ export default {
     clearSearchFilter() {
       this.searchKeyword = ''
       this.currentPage = 1
-      this.$router.replace({ path: '/' }).catch(() => {})
+      this.$router.replace({ path: '/', query: this.showMine ? { mine: '1' } : {} }).catch(() => {})
+    },
+    clearMineFilter() {
+      this.$router.replace({
+        path: '/',
+        query: this.searchKeyword ? { search: this.searchKeyword } : {}
+      }).catch(() => {})
     },
     resetAllFilters() {
       this.selectedLabel = ''
@@ -309,6 +348,13 @@ export default {
     getLabelName(id) {
       const found = this.labels.find(l => l.id === id)
       return found ? found.labelname : id
+    },
+    getStateText(state) {
+      return {
+        '0': '草稿',
+        '1': '已发布',
+        '2': '待审核'
+      }[String(state)] || '未知状态'
     },
     getSummary(content) {
       if (!content) return '暂无内容摘要'

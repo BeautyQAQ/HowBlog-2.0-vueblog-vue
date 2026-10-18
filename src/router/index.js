@@ -9,6 +9,7 @@ import Register from '@/views/Register.vue'
 import Profile from '@/views/Profile.vue'
 import ArticleDetail from '@/views/ArticleDetail.vue'
 import ArticleEdit from '@/views/ArticleEdit.vue'
+import ArticleReview from '@/views/ArticleReview.vue'
 import LabelManage from '@/views/LabelManage.vue'
 import Chat from '@/views/Chat.vue'
 
@@ -35,6 +36,12 @@ const routes = [
     path: '/article/edit/:id',
     name: 'ArticleEdit',
     component: ArticleEdit,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/article/review',
+    name: 'ArticleReview',
+    component: ArticleReview,
     meta: { requiresAuth: true }
   },
   {

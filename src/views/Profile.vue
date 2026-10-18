@@ -163,13 +163,41 @@
             </div>
           </el-form>
         </el-tab-pane>
+
+        <el-tab-pane label="关注关系" name="relations">
+          <div class="relation-toolbar">
+            <el-radio-group v-model="relationType" size="small" @change="loadRelations">
+              <el-radio-button label="follows">我的关注</el-radio-button>
+              <el-radio-button label="fans">我的粉丝</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div v-loading="relationLoading" class="relation-list">
+            <el-empty v-if="relationUsers.length === 0" description="暂无用户" :image-size="80" />
+            <div v-for="user in relationUsers" :key="user.id" class="relation-item">
+              <el-avatar :size="40" :src="user.avatar || defaultAvatar" />
+              <div class="relation-user">
+                <strong>{{ user.nickname || user.id }}</strong>
+                <span>{{ user.interest || '暂未填写兴趣' }}</span>
+              </div>
+              <span class="relation-count">粉丝 {{ user.fanscount || 0 }} · 关注 {{ user.followcount || 0 }}</span>
+            </div>
+            <el-pagination
+              v-if="relationTotal > relationSize"
+              layout="prev, pager, next, total"
+              :current-page="relationPage"
+              :page-size="relationSize"
+              :total="relationTotal"
+              @current-change="loadRelations"
+            />
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
 </template>
 
 <script>
-import { getProfile, updateProfile, changePassword } from '@/api/user'
+import { getProfile, updateProfile, changePassword, getUserFans, getUserFollows } from '@/api/user'
 
 const fieldLabels = {
   nickname: '昵称',
@@ -196,8 +224,16 @@ export default {
       loading: false,
       saving: false,
       changingPassword: false,
-      activeTab: this.$route.query.tab === 'password' ? 'password' : 'profile',
+      activeTab: ['password', 'relations'].includes(this.$route.query.tab)
+        ? this.$route.query.tab
+        : 'profile',
       profile: {},
+      relationType: 'follows',
+      relationUsers: [],
+      relationPage: 1,
+      relationSize: 10,
+      relationTotal: 0,
+      relationLoading: false,
       form: {
         nickname: '',
         sex: '',
@@ -244,6 +280,12 @@ export default {
   },
   created() {
     this.loadProfile()
+    if (this.activeTab === 'relations') this.loadRelations()
+  },
+  watch: {
+    activeTab(value) {
+      if (value === 'relations') this.loadRelations()
+    }
   },
   methods: {
     applyProfile(data) {
@@ -264,11 +306,29 @@ export default {
         const res = await getProfile()
         if (res && res.flag && res.data) {
           this.applyProfile(res.data)
+          if (this.activeTab === 'relations') this.loadRelations()
         }
       } catch (e) {
         console.error(e)
       } finally {
         this.loading = false
+      }
+    },
+    async loadRelations(page = this.relationPage) {
+      if (!this.profile.id) return
+      this.relationPage = page
+      this.relationLoading = true
+      try {
+        const load = this.relationType === 'fans' ? getUserFans : getUserFollows
+        const res = await load(this.profile.id, this.relationPage, this.relationSize)
+        if (res && res.flag && res.data) {
+          this.relationUsers = Array.isArray(res.data.rows) ? res.data.rows : []
+          this.relationTotal = Number(res.data.total) || 0
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        this.relationLoading = false
       }
     },
     buildPayload() {
@@ -351,6 +411,11 @@ export default {
       if (Number.isNaN(date.getTime())) return '-'
       const pad = number => String(number).padStart(2, '0')
       return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    }
+  },
+  computed: {
+    defaultAvatar() {
+      return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
     }
   }
 }
@@ -456,5 +521,43 @@ export default {
 
 .password-form {
   max-width: 480px;
+}
+
+.relation-toolbar {
+  margin-bottom: 18px;
+}
+
+.relation-list {
+  min-height: 180px;
+}
+
+.relation-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.relation-user {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.relation-user strong {
+  color: #303133;
+}
+
+.relation-user span,
+.relation-count {
+  color: #909399;
+  font-size: 12px;
+}
+
+.relation-count {
+  white-space: nowrap;
 }
 </style>

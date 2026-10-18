@@ -54,6 +54,12 @@
               <el-dropdown-item divided command="profile" icon="el-icon-user">
                 个人资料
               </el-dropdown-item>
+              <el-dropdown-item command="my-articles" icon="el-icon-notebook-2">
+                我的文章
+              </el-dropdown-item>
+              <el-dropdown-item command="review" icon="el-icon-s-check">
+                审核中心
+              </el-dropdown-item>
               <el-dropdown-item command="password" icon="el-icon-key">
                 修改密码
               </el-dropdown-item>
@@ -104,6 +110,14 @@ export default {
       this.$router.push('/article/create')
     },
     async handleCommand(cmd) {
+      if (cmd === 'my-articles') {
+        this.$router.push({ path: '/', query: { mine: '1' } }).catch(() => {})
+        return
+      }
+      if (cmd === 'review') {
+        this.$router.push('/article/review').catch(() => {})
+        return
+      }
       if (cmd === 'profile' || cmd === 'password') {
         const target = cmd === 'password'
           ? { path: '/profile', query: { tab: 'password' } }

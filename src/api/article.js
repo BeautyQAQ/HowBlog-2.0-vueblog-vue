@@ -43,6 +43,66 @@ export function updateArticle(id, data) {
 }
 
 /**
+ * 发布文章
+ */
+export function publishArticle(id) {
+  return request({
+    url: `/article/${id}/publish`,
+    method: 'put'
+  })
+}
+
+/**
+ * 下架文章
+ */
+export function unpublishArticle(id) {
+  return request({
+    url: `/article/${id}/unpublish`,
+    method: 'put'
+  })
+}
+
+/**
+ * 提交文章审核
+ */
+export function submitArticle(id) {
+  return request({
+    url: `/article/${id}/submit`,
+    method: 'put'
+  })
+}
+
+/**
+ * 审核通过文章
+ */
+export function approveArticle(id) {
+  return request({
+    url: `/article/${id}/approve`,
+    method: 'put'
+  })
+}
+
+/**
+ * 驳回文章审核
+ */
+export function rejectArticle(id) {
+  return request({
+    url: `/article/${id}/reject`,
+    method: 'put'
+  })
+}
+
+/**
+ * 文章点赞
+ */
+export function thumbupArticle(id) {
+  return request({
+    url: `/article/thumbup/${id}`,
+    method: 'put'
+  })
+}
+
+/**
  * 删除文章
  */
 export function deleteArticle(id) {

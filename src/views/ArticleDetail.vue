@@ -30,7 +30,15 @@
 
             <div class="action-stats">
               <span class="stat-badge"><i class="el-icon-view"></i> {{ article.visits || 0 }} 阅读</span>
-              <span class="stat-badge"><i class="el-icon-thumb"></i> {{ article.thumbup || 0 }} 点赞</span>
+              <el-button
+                type="text"
+                size="mini"
+                class="stat-badge thumbup-article-btn"
+                :disabled="articleLiked"
+                @click="handleArticleThumbup"
+              >
+                <i class="el-icon-thumb"></i> {{ article.thumbup || 0 }} 点赞
+              </el-button>
               <span class="stat-badge"><i class="el-icon-chat-round"></i> {{ comments.length }} 评论</span>
 
               <template v-if="isAuthor">
@@ -52,8 +60,49 @@
                 >
                   删除
                 </el-button>
+                <el-button
+                  v-if="articleState === '0'"
+                  type="success"
+                  size="mini"
+                  plain
+                  @click="transitionArticle('publish')"
+                >
+                  发布
+                </el-button>
+                <el-button
+                  v-if="articleState === '0'"
+                  type="warning"
+                  size="mini"
+                  plain
+                  @click="transitionArticle('submit')"
+                >
+                  提交审核
+                </el-button>
+                <el-button
+                  v-if="articleState === '1'"
+                  type="warning"
+                  size="mini"
+                  plain
+                  @click="transitionArticle('unpublish')"
+                >
+                  下架
+                </el-button>
               </template>
             </div>
+          </div>
+
+          <div class="article-tags">
+            <el-tag v-if="articleState !== '1'" size="small" type="warning">
+              {{ stateText }}
+            </el-tag>
+            <el-tag
+              v-for="labelId in article.labelIds || []"
+              :key="`detail-label-${labelId}`"
+              size="small"
+              effect="plain"
+            >
+              {{ getLabelName(labelId) }}
+            </el-tag>
           </div>
 
           <!-- 封面大图 -->
@@ -172,6 +221,15 @@
             />
             <div class="author-title">{{ article.userid || '作者' }}</div>
             <p class="author-bio">致力于分享技术见解与工程实践。</p>
+            <el-button
+              v-if="isLoggedIn && !isAuthor"
+              size="small"
+              :type="followingAuthor ? 'default' : 'primary'"
+              plain
+              @click="toggleFollowAuthor"
+            >
+              {{ followingAuthor ? '取消关注' : '关注作者' }}
+            </el-button>
           </div>
         </div>
 
@@ -203,9 +261,10 @@
 </template>
 
 <script>
-import { getArticleById, deleteArticle } from '@/api/article'
+import { getArticleById, deleteArticle, thumbupArticle, publishArticle, unpublishArticle, submitArticle } from '@/api/article'
 import { getCommentsByArticleId, saveComment, deleteComment, thumbupComment } from '@/api/comment'
 import { getLabelList } from '@/api/label'
+import { followUser, unfollowUser } from '@/api/user'
 import { mapGetters } from 'vuex'
 
 export default {
@@ -218,13 +277,26 @@ export default {
       labels: [],
       loading: false,
       newCommentContent: '',
-      submittingComment: false
+      submittingComment: false,
+      articleLiked: false,
+      followingAuthor: false,
+      transitioning: false
     }
   },
   computed: {
     ...mapGetters(['userId', 'nickname', 'isLoggedIn']),
     isAuthor() {
       return this.isLoggedIn && this.article && this.article.userid === this.userId
+    },
+    articleState() {
+      return String(this.article && this.article.state != null ? this.article.state : '1')
+    },
+    stateText() {
+      return {
+        '0': '草稿',
+        '1': '已发布',
+        '2': '待审核'
+      }[this.articleState] || '未知状态'
     },
     labelName() {
       if (!this.article || !this.article.columnid) return ''
@@ -295,6 +367,53 @@ export default {
         this.submittingComment = false
       }
     },
+    async handleArticleThumbup() {
+      if (!this.requireLogin() || this.articleLiked) return
+      try {
+        const res = await thumbupArticle(this.articleId)
+        if (res && res.flag) {
+          this.articleLiked = true
+          this.article.thumbup = (this.article.thumbup || 0) + 1
+          this.$message.success('点赞成功')
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    },
+    async transitionArticle(action) {
+      if (!this.isAuthor || this.transitioning) return
+      this.transitioning = true
+      try {
+        const transitions = {
+          publish: publishArticle,
+          unpublish: unpublishArticle,
+          submit: submitArticle
+        }
+        const res = await transitions[action](this.articleId)
+        if (res && res.flag) {
+          this.article.state = action === 'publish' ? '1' : action === 'submit' ? '2' : '0'
+          this.$message.success(res.message || '文章状态已更新')
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        this.transitioning = false
+      }
+    },
+    async toggleFollowAuthor() {
+      if (!this.requireLogin() || !this.article || !this.article.userid) return
+      try {
+        const res = this.followingAuthor
+          ? await unfollowUser(this.article.userid)
+          : await followUser(this.article.userid)
+        if (res && res.flag) {
+          this.followingAuthor = !this.followingAuthor
+          this.$message.success(this.followingAuthor ? '关注成功' : '已取消关注')
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    },
     async handleThumbup(comment) {
       if (!this.requireLogin()) return
       const commentId = comment.id || comment._id
@@ -311,6 +430,10 @@ export default {
     canDeleteComment(comment) {
       if (!this.isLoggedIn) return false
       return comment.userid === this.userId
+    },
+    getLabelName(id) {
+      const found = this.labels.find(label => label.id === id)
+      return found ? found.labelname : id
     },
     requireLogin() {
       if (this.$store.state.user && this.$store.state.user.expiresAt > Date.now()) return true
@@ -438,6 +561,17 @@ export default {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.thumbup-article-btn {
+  padding: 0;
+}
+
+.article-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 24px;
 }
 
 .stat-badge {

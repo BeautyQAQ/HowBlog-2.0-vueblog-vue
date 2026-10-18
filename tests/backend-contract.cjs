@@ -269,6 +269,45 @@ async function run() {
   assert.deepStrictEqual(Object.keys(calls[9].data), ['oldPassword', 'newPassword'])
   assert.strictEqual(calls[9].data.newPassword, 'new-pass-1')
 
+  load('src/api/article.js', apiContext)
+  const articleApiStart = calls.length
+  await apiContext.addArticle({ title: 'Draft', content: 'Content', labelIds: ['java'] })
+  await apiContext.updateArticle('article-1', { labelIds: [] })
+  await apiContext.publishArticle('article-1')
+  await apiContext.unpublishArticle('article-1')
+  await apiContext.submitArticle('article-1')
+  await apiContext.approveArticle('article-1')
+  await apiContext.rejectArticle('article-1')
+  await apiContext.thumbupArticle('article-1')
+  assert.deepStrictEqual(calls.slice(articleApiStart).map(call => [call.method, call.url]), [
+    ['post', '/article'],
+    ['put', '/article/article-1'],
+    ['put', '/article/article-1/publish'],
+    ['put', '/article/article-1/unpublish'],
+    ['put', '/article/article-1/submit'],
+    ['put', '/article/article-1/approve'],
+    ['put', '/article/article-1/reject'],
+    ['put', '/article/thumbup/article-1']
+  ])
+  assert.deepStrictEqual(calls[articleApiStart].data.labelIds, ['java'])
+
+  load('src/api/user.js', apiContext)
+  const userRelationApiStart = calls.length
+  const callsBeforeInvalidRelationPage = calls.length
+  await assert.rejects(apiContext.getUserFans('42', 0, 10))
+  await assert.rejects(apiContext.getUserFollows('42', 1, 101))
+  assert.strictEqual(calls.length, callsBeforeInvalidRelationPage)
+  await apiContext.followUser('9')
+  await apiContext.unfollowUser('9')
+  await apiContext.getUserFans('42', 1, 10)
+  await apiContext.getUserFollows('42', 2, 20)
+  assert.deepStrictEqual(calls.slice(userRelationApiStart).map(call => [call.method, call.url]), [
+    ['put', '/user/follow/9'],
+    ['delete', '/user/follow/9'],
+    ['get', '/user/42/fans/1/10'],
+    ['get', '/user/42/follows/2/20']
+  ])
+
   const component = name => load(`src/views/${name}.vue`, { mapGetters: () => ({}) }).result
   const detail = component('ArticleDetail')
   assert.strictEqual(detail.methods.canDeleteComment.call({ isLoggedIn: true, userId: '42', nickname: '9', isAuthor: true }, { userid: '9' }), false)
@@ -277,6 +316,36 @@ async function run() {
     const data = component(name).data.call({ $route: { params: {} } })
     for (const field of fields) assert(data.rules[field].some(rule => rule.required && rule.whitespace))
   }
+  const articleEditData = component('ArticleEdit').data.call({ $route: { params: {} } })
+  assert.strictEqual(articleEditData.form.labelIds.length, 0)
+  const reviewView = component('ArticleReview')
+  const reviewData = reviewView.data.call({})
+  assert.strictEqual(reviewData.processingId, null)
+  assert.strictEqual(reviewData.articles.length, 0)
+
+  let draftPayload = null
+  let draftRoute = null
+  const articleEditView = load('src/views/ArticleEdit.vue', {
+    getArticleById: async () => ({ flag: true, data: null }),
+    addArticle: async data => { draftPayload = data; return { flag: true } },
+    updateArticle: async () => ({ flag: true }),
+    publishArticle: async () => ({ flag: true }),
+    unpublishArticle: async () => ({ flag: true }),
+    submitArticle: async () => ({ flag: true }),
+    getLabelList: async () => ({ flag: true, data: [] })
+  }).result
+  const articleEditState = {
+    ...articleEditView.data.call({ $route: { params: {} } }),
+    isEdit: false,
+    validateForm: async () => true,
+    $message: { success() {} },
+    $router: { push(value) { draftRoute = value } }
+  }
+  await articleEditView.methods.submitForm.call(articleEditState)
+  assert.strictEqual(draftPayload.state, undefined)
+  assert.strictEqual(draftPayload.labelIds.length, 0)
+  assert.strictEqual(draftRoute.path, '/')
+  assert.strictEqual(draftRoute.query.mine, '1')
 
   const loginView = component('Login')
   const loginState = { form: { mobile: '', password: '' }, $route: { query: { mobile: '13900000000' } } }
@@ -436,7 +505,10 @@ async function run() {
   await header.methods.handleCommand.call(headerNav, 'password')
   assert.strictEqual(headerPushed.path, '/profile')
   assert.strictEqual(headerPushed.query.tab, 'password')
-  console.log('PASS: revision 15 register/profile/password contracts, session rotation, rate-limit retry, cross-tab locking, logout, HTTP, validation and WebSocket contracts')
+  await header.methods.handleCommand.call(headerNav, 'my-articles')
+  assert.strictEqual(headerPushed.path, '/')
+  assert.strictEqual(headerPushed.query.mine, '1')
+  console.log('PASS: revision 21 article lifecycle, labels, article thumbup, follows, revision 15 auth, HTTP, validation and WebSocket contracts')
 }
 
 run().catch(error => {
