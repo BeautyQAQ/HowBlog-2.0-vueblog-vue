@@ -87,6 +87,16 @@ function validatePage(page, size) {
 }
 
 /**
+ * 查询当前用户是否已关注目标用户
+ */
+export function getFollowStatus(userId) {
+  return request({
+    url: `/user/follow/${userId}`,
+    method: 'get'
+  })
+}
+
+/**
  * 关注用户
  */
 export function followUser(userId) {

@@ -71,7 +71,7 @@
             type="textarea"
             :rows="14"
             v-model="form.content"
-            placeholder="请输入文章正文内容，支持 HTML 或纯文本..."
+            placeholder="请输入文章正文，支持换行；HTML 标签会按文字显示"
           />
         </el-form-item>
 

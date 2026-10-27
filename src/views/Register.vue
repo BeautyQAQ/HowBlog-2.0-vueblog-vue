@@ -25,7 +25,7 @@
           <el-input
             v-model="form.password"
             type="password"
-            placeholder="密码（8~64 个字符）"
+            placeholder="密码（8~64 个字符，最多 72 字节）"
             prefix-icon="el-icon-lock"
             show-password
           />
@@ -86,6 +86,7 @@
 
 <script>
 import { register } from '@/api/user'
+import { validateNewPassword } from '@/utils/password'
 
 export default {
   name: 'Register',
@@ -106,17 +107,7 @@ export default {
         ],
         password: [
           { required: true, message: '请输入密码', trigger: 'blur' },
-          { min: 8, max: 64, message: '密码长度须为 8 到 64 个字符', trigger: 'blur' },
-          {
-            validator: (rule, value, callback) => {
-              if (value && !String(value).trim()) {
-                callback(new Error('密码不能为纯空白'))
-                return
-              }
-              callback()
-            },
-            trigger: 'blur'
-          }
+          { validator: validateNewPassword, trigger: 'blur' }
         ],
         confirmPassword: [
           { required: true, message: '请再次输入密码', trigger: 'blur' },

@@ -5,7 +5,7 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "test": "node tests/backend-contract.cjs"
+    "test": "node tests/backend-contract.cjs && node tests/revision-22.cjs && node tests/core-wrapup.cjs"
   },
   "dependencies": {
     "axios": "^0.23.0",

@@ -11,6 +11,8 @@ function load(relativePath, context = {}) {
   return context
 }
 
+const { validateNewPassword } = load('src/utils/password.js', { TextEncoder })
+
 function sessionHarness(shared, overrides = {}) {
   let saved = JSON.stringify({ id: 'legacy-user' })
   const storage = shared || {
@@ -308,7 +310,7 @@ async function run() {
     ['get', '/user/42/follows/2/20']
   ])
 
-  const component = name => load(`src/views/${name}.vue`, { mapGetters: () => ({}) }).result
+  const component = name => load(`src/views/${name}.vue`, { mapGetters: () => ({}), validateNewPassword }).result
   const detail = component('ArticleDetail')
   assert.strictEqual(detail.methods.canDeleteComment.call({ isLoggedIn: true, userId: '42', nickname: '9', isAuthor: true }, { userid: '9' }), false)
   assert.strictEqual(detail.methods.canDeleteComment.call({ isLoggedIn: true, userId: '42' }, { userid: '42' }), true)
@@ -359,6 +361,7 @@ async function run() {
   let registerRequest = null
   let registerResponse = () => ({ flag: true, code: 20000, data: null })
   const registerView = load('src/views/Register.vue', {
+    validateNewPassword,
     register: async data => { registerRequest = data; return registerResponse() }
   }).result
   const registerState = {
@@ -376,7 +379,7 @@ async function run() {
   assert(mobileRule.pattern.test('13800000000'))
   assert(!mobileRule.pattern.test('2380000000'))
   assert(!mobileRule.pattern.test('138000000000'))
-  assert(registerData.rules.password.some(rule => rule.min === 8 && rule.max === 64))
+  assert(registerData.rules.password.some(rule => rule.validator === validateNewPassword))
   assert(registerData.rules.nickname.some(rule => rule.max === 100))
   let registerMismatch
   registerData.rules.confirmPassword[1].validator(null, 'different-password', error => { registerMismatch = error })
@@ -408,6 +411,7 @@ async function run() {
     passwordForm: { oldPassword: '', newPassword: 'new-pass-1', confirmPassword: '' }
   }
   const profileView = load('src/views/Profile.vue', {
+    validateNewPassword,
     getProfile: async () => ({ flag: true, data: {} }),
     updateProfile: async () => ({ flag: true, data: {} }),
     changePassword: async () => ({ flag: true, data: null })
@@ -420,10 +424,10 @@ async function run() {
   assert.strictEqual(profileData.profileRules.avatar[0].max, 500)
   assert.strictEqual(profileData.profileRules.interest[0].max, 500)
   assert.strictEqual(profileData.profileRules.personality[0].max, 500)
-  assert(profileData.passwordRules.newPassword.some(rule => rule.min === 8 && rule.max === 64))
+  assert(profileData.passwordRules.newPassword.some(rule => rule.validator === validateNewPassword))
   const blankErrors = []
-  profileData.passwordRules.newPassword[2].validator(null, '        ', error => blankErrors.push(error))
-  assert(blankErrors[0] && blankErrors[0].message === '不能为纯空白')
+  profileData.passwordRules.newPassword[1].validator(null, '        ', error => blankErrors.push(error))
+  assert(blankErrors[0] && blankErrors[0].message === '密码不能为纯空白')
   const passwordMismatch = []
   profileData.passwordRules.confirmPassword[1].validator(null, 'different', error => passwordMismatch.push(error))
   assert(passwordMismatch[0] && passwordMismatch[0].message === '两次输入的新密码不一致')
@@ -508,7 +512,7 @@ async function run() {
   await header.methods.handleCommand.call(headerNav, 'my-articles')
   assert.strictEqual(headerPushed.path, '/')
   assert.strictEqual(headerPushed.query.mine, '1')
-  console.log('PASS: revision 21 article lifecycle, labels, article thumbup, follows, revision 15 auth, HTTP, validation and WebSocket contracts')
+  console.log('PASS: article lifecycle, labels, article thumbup, follows, authentication, HTTP, forms and WebSocket contracts')
 }
 
 run().catch(error => {

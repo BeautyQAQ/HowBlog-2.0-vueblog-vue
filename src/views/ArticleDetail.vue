@@ -34,12 +34,12 @@
                 type="text"
                 size="mini"
                 class="stat-badge thumbup-article-btn"
-                :disabled="articleLiked"
+                :disabled="articleLiked || !canInteract"
                 @click="handleArticleThumbup"
               >
                 <i class="el-icon-thumb"></i> {{ article.thumbup || 0 }} 点赞
               </el-button>
-              <span class="stat-badge"><i class="el-icon-chat-round"></i> {{ comments.length }} 评论</span>
+              <span class="stat-badge"><i class="el-icon-chat-round"></i> {{ article.comment || 0 }} 评论</span>
 
               <template v-if="isAuthor">
                 <el-button
@@ -65,6 +65,7 @@
                   type="success"
                   size="mini"
                   plain
+                  :loading="transitioning"
                   @click="transitionArticle('publish')"
                 >
                   发布
@@ -74,6 +75,7 @@
                   type="warning"
                   size="mini"
                   plain
+                  :loading="transitioning"
                   @click="transitionArticle('submit')"
                 >
                   提交审核
@@ -83,6 +85,7 @@
                   type="warning"
                   size="mini"
                   plain
+                  :loading="transitioning"
                   @click="transitionArticle('unpublish')"
                 >
                   下架
@@ -92,6 +95,7 @@
           </div>
 
           <div class="article-tags">
+            <el-tag v-if="article.ispublic === '0'" size="small" type="info">私密</el-tag>
             <el-tag v-if="articleState !== '1'" size="small" type="warning">
               {{ stateText }}
             </el-tag>
@@ -123,7 +127,7 @@
           </div>
 
           <!-- 文章正文 -->
-          <div class="article-body" v-html="article.content"></div>
+          <div class="article-body">{{ article.content }}</div>
         </article>
 
         <!-- 评论互动区域 -->
@@ -132,9 +136,26 @@
             评论 <span>({{ comments.length }})</span>
           </h3>
 
+          <el-alert
+            v-if="!canInteract"
+            class="comment-notice"
+            type="info"
+            :closable="false"
+            show-icon
+            :title="articleState !== '1' ? '文章未发布，暂不能发表评论或点赞' : '评论暂不可用，请刷新文章后重试'"
+          />
+
           <!-- 发表评论框 -->
-          <div class="comment-input-box">
+          <div v-else class="comment-input-box">
+            <div v-if="replyTo" class="reply-target">
+              <div class="reply-target-header">
+                <span>回复 {{ replyTo.userid }}</span>
+                <el-button type="text" size="mini" @click="replyTo = null">取消回复</el-button>
+              </div>
+              <div class="reply-preview">{{ replyTo.content }}</div>
+            </div>
             <el-input
+              ref="commentInput"
               type="textarea"
               :rows="3"
               placeholder="写下你的评论，支持善意的交流与讨论..."
@@ -155,9 +176,14 @@
                 :loading="submittingComment"
                 @click="submitComment"
               >
-                {{ isLoggedIn ? '发表评论' : '登录' }}
+                {{ isLoggedIn ? (replyTo ? '发表回复' : '发表评论') : '登录' }}
               </el-button>
             </div>
+          </div>
+
+          <div v-if="commentsError" class="comment-notice" role="alert">
+            <el-alert :title="commentsError" type="warning" :closable="false" show-icon />
+            <el-button type="text" @click="fetchData(false)">重新加载文章与评论</el-button>
           </div>
 
           <!-- 评论列表 -->
@@ -177,6 +203,9 @@
                   <span class="comment-user">{{ c.userid || '匿名用户' }}</span>
                   <span class="comment-time">{{ formatDate(c.publishdate) }}</span>
                 </div>
+                <div v-if="c.parentid" class="reply-reference">
+                  回复 {{ getParentAuthor(c.parentid) }}
+                </div>
                 <div class="comment-text">{{ c.content }}</div>
                 <div class="comment-footer">
                   <el-button
@@ -184,9 +213,19 @@
                     size="mini"
                     class="thumbup-btn"
                     icon="el-icon-thumb"
+                    :disabled="!canInteract"
                     @click="handleThumbup(c)"
                   >
                     赞 {{ c.thumbup || 0 }}
+                  </el-button>
+                  <el-button
+                    v-if="canInteract"
+                    type="text"
+                    size="mini"
+                    icon="el-icon-chat-line-round"
+                    @click="replyToComment(c)"
+                  >
+                    回复
                   </el-button>
                   <el-button
                     v-if="canDeleteComment(c)"
@@ -204,7 +243,7 @@
           </div>
 
           <el-empty
-            v-else
+            v-else-if="!commentsError"
             description="暂无评论，快来抢沙发吧~"
             :image-size="80"
           />
@@ -225,10 +264,11 @@
               v-if="isLoggedIn && !isAuthor"
               size="small"
               :type="followingAuthor ? 'default' : 'primary'"
+              :loading="followLoading || followUpdating"
               plain
               @click="toggleFollowAuthor"
             >
-              {{ followingAuthor ? '取消关注' : '关注作者' }}
+              {{ isLoggedIn && !followStatusLoaded ? '重试关注状态' : followingAuthor ? '取消关注' : '关注作者' }}
             </el-button>
           </div>
         </div>
@@ -254,8 +294,9 @@
       </aside>
     </div>
 
-    <el-empty v-else-if="!loading" description="文章不存在或已被删除">
+    <el-empty v-else-if="!loading" :description="articleError || '文章不存在或暂无访问权限'">
       <el-button type="primary" @click="$router.push('/')">返回首页</el-button>
+      <el-button @click="fetchData()">重新加载</el-button>
     </el-empty>
   </div>
 </template>
@@ -264,7 +305,7 @@
 import { getArticleById, deleteArticle, thumbupArticle, publishArticle, unpublishArticle, submitArticle } from '@/api/article'
 import { getCommentsByArticleId, saveComment, deleteComment, thumbupComment } from '@/api/comment'
 import { getLabelList } from '@/api/label'
-import { followUser, unfollowUser } from '@/api/user'
+import { followUser, unfollowUser, getFollowStatus } from '@/api/user'
 import { mapGetters } from 'vuex'
 
 export default {
@@ -276,10 +317,19 @@ export default {
       comments: [],
       labels: [],
       loading: false,
+      loadVersion: 0,
+      articleError: '',
+      commentsError: '',
+      commentsUnavailable: false,
+      replyTo: null,
       newCommentContent: '',
       submittingComment: false,
       articleLiked: false,
       followingAuthor: false,
+      followStatusLoaded: false,
+      followLoading: false,
+      followUpdating: false,
+      followVersion: 0,
       transitioning: false
     }
   },
@@ -290,6 +340,9 @@ export default {
     },
     articleState() {
       return String(this.article && this.article.state != null ? this.article.state : '1')
+    },
+    canInteract() {
+      return !!this.article && this.articleState === '1' && !this.commentsUnavailable
     },
     stateText() {
       return {
@@ -307,42 +360,102 @@ export default {
   created() {
     this.fetchData()
   },
+  beforeDestroy() {
+    this.loadVersion++
+  },
+  watch: {
+    userId() {
+      this.article = null
+      this.comments = []
+      this.replyTo = null
+      this.articleLiked = false
+      this.followingAuthor = false
+      this.followStatusLoaded = false
+      this.followLoading = false
+      this.followUpdating = false
+      this.followVersion++
+      this.fetchData(false)
+    }
+  },
   methods: {
-    async fetchData() {
+    async fetchData(includeLabels = true) {
+      const version = ++this.loadVersion
       this.loading = true
       try {
-        const [articleRes, commentRes, labelRes] = await Promise.all([
-          getArticleById(this.articleId),
-          getCommentsByArticleId(this.articleId),
-          getLabelList()
+        await Promise.all([
+          this.fetchArticle(version),
+          includeLabels ? this.fetchLabels(version) : Promise.resolve()
         ])
-        if (articleRes && articleRes.flag) {
-          this.article = articleRes.data
+        if (version === this.loadVersion && this.article) {
+          await Promise.all([this.fetchComments(version), this.fetchFollowStatus(version)])
         }
-        if (commentRes && commentRes.flag && Array.isArray(commentRes.data)) {
-          this.comments = commentRes.data
-        }
-        if (labelRes && labelRes.flag && Array.isArray(labelRes.data)) {
-          this.labels = labelRes.data
-        }
-      } catch (e) {
-        console.error('Failed to load article detail:', e)
       } finally {
-        this.loading = false
+        if (version === this.loadVersion) this.loading = false
       }
     },
-    async fetchComments() {
+    async fetchArticle(version = this.loadVersion) {
+      try {
+        const res = await getArticleById(this.articleId)
+        if (version !== this.loadVersion) return false
+        if (res && res.flag && res.data) {
+          this.article = res.data
+          this.articleError = ''
+          return true
+        }
+      } catch (error) {
+        if (version !== this.loadVersion) return false
+        const missing = error.response && error.response.status === 404
+        this.articleError = missing ? '文章不存在、已被删除或暂无访问权限' : '文章加载失败，请稍后重试'
+        if (missing) {
+          this.article = null
+          this.comments = []
+          this.replyTo = null
+        }
+      }
+      return false
+    },
+    async fetchLabels(version = this.loadVersion) {
+      try {
+        const res = await getLabelList()
+        if (version === this.loadVersion && res && res.flag && Array.isArray(res.data)) {
+          this.labels = res.data
+        }
+      } catch {
+        // 标签服务暂不可用时仍展示文章正文。
+      }
+    },
+    async fetchComments(version = this.loadVersion) {
       try {
         const res = await getCommentsByArticleId(this.articleId)
+        if (version !== this.loadVersion) return
         if (res && res.flag && Array.isArray(res.data)) {
           this.comments = res.data
+          this.commentsError = ''
+          this.commentsUnavailable = false
+          if (this.replyTo && !this.comments.some(comment =>
+            (comment._id || comment.id) === (this.replyTo._id || this.replyTo.id))) {
+            this.replyTo = null
+            this.$message.warning('回复的评论已不存在，已取消回复，请确认后重新提交')
+          }
         }
-      } catch (e) {
-        console.error(e)
+      } catch (error) {
+        if (version !== this.loadVersion) return
+        this.commentsUnavailable = !!(error.response && error.response.status === 404)
+        this.commentsError = this.commentsUnavailable
+          ? '文章不存在或暂无访问权限，无法加载评论'
+          : '评论加载失败，请稍后重试'
+        if (this.commentsUnavailable) {
+          this.comments = []
+          this.replyTo = null
+        }
       }
     },
     async submitComment() {
-      if (!this.requireLogin()) return
+      if (!this.requireLogin() || this.submittingComment) return
+      if (!this.canInteract) {
+        this.$message.warning('文章未发布或评论暂不可用，无法发表评论')
+        return
+      }
       const content = this.newCommentContent.trim()
       if (!content || !String(this.articleId || '').trim()) {
         this.$message.warning('评论内容不能为空')
@@ -355,20 +468,22 @@ export default {
           articleid: this.articleId,
           content: content
         }
+        if (this.replyTo) payload.parentid = this.replyTo._id || this.replyTo.id
         const res = await saveComment(payload)
         if (res && res.flag) {
           this.$message.success('评论发表成功')
           this.newCommentContent = ''
-          this.fetchComments()
+          this.replyTo = null
+          await this.fetchData(false)
         }
-      } catch (e) {
-        console.error(e)
+      } catch (error) {
+        await this.refreshAfterCommentError(error)
       } finally {
         this.submittingComment = false
       }
     },
     async handleArticleThumbup() {
-      if (!this.requireLogin() || this.articleLiked) return
+      if (!this.requireLogin() || !this.canInteract || this.articleLiked) return
       try {
         const res = await thumbupArticle(this.articleId)
         if (res && res.flag) {
@@ -376,8 +491,8 @@ export default {
           this.article.thumbup = (this.article.thumbup || 0) + 1
           this.$message.success('点赞成功')
         }
-      } catch (e) {
-        console.error(e)
+      } catch (error) {
+        await this.refreshAfterCommentError(error)
       }
     },
     async transitionArticle(action) {
@@ -391,8 +506,8 @@ export default {
         }
         const res = await transitions[action](this.articleId)
         if (res && res.flag) {
-          this.article.state = action === 'publish' ? '1' : action === 'submit' ? '2' : '0'
           this.$message.success(res.message || '文章状态已更新')
+          await this.fetchData(false)
         }
       } catch (e) {
         console.error(e)
@@ -400,22 +515,61 @@ export default {
         this.transitioning = false
       }
     },
-    async toggleFollowAuthor() {
-      if (!this.requireLogin() || !this.article || !this.article.userid) return
+    async fetchFollowStatus(version = this.loadVersion) {
+      if (this.followUpdating) return
+      const requestId = ++this.followVersion
+      const authorId = this.article && this.article.userid
+      if (!this.isLoggedIn || !authorId || authorId === this.userId) {
+        this.followingAuthor = false
+        this.followStatusLoaded = true
+        this.followLoading = false
+        return
+      }
+      this.followLoading = true
+      this.followStatusLoaded = false
       try {
-        const res = this.followingAuthor
-          ? await unfollowUser(this.article.userid)
-          : await followUser(this.article.userid)
-        if (res && res.flag) {
-          this.followingAuthor = !this.followingAuthor
-          this.$message.success(this.followingAuthor ? '关注成功' : '已取消关注')
+        const res = await getFollowStatus(authorId)
+        if (version !== this.loadVersion || requestId !== this.followVersion) return
+        if (res && res.flag && res.data && typeof res.data.following === 'boolean') {
+          this.followingAuthor = res.data.following
+          this.followStatusLoaded = true
         }
-      } catch (e) {
-        console.error(e)
+      } catch {
+        // 状态未知时只允许重试查询，避免误发关注或取关。
+      } finally {
+        if (version === this.loadVersion && requestId === this.followVersion) this.followLoading = false
+      }
+    },
+    async toggleFollowAuthor() {
+      if (!this.requireLogin() || !this.article || !this.article.userid || this.followLoading || this.followUpdating) return
+      if (!this.followStatusLoaded) {
+        await this.fetchFollowStatus()
+        return
+      }
+      const viewerId = this.userId
+      const authorId = this.article.userid
+      const wasFollowing = this.followingAuthor
+      this.followUpdating = true
+      try {
+        const res = wasFollowing ? await unfollowUser(authorId) : await followUser(authorId)
+        if (viewerId !== this.userId || !this.article || authorId !== this.article.userid) return
+        if (res && res.flag) {
+          this.followingAuthor = !wasFollowing
+          this.$message.success(this.followingAuthor ? '关注成功' : '已取消关注')
+        } else {
+          this.followStatusLoaded = false
+        }
+      } catch {
+        if (viewerId === this.userId) this.followStatusLoaded = false
+      } finally {
+        if (viewerId === this.userId) this.followUpdating = false
+      }
+      if (viewerId === this.userId && !this.followStatusLoaded) {
+        await this.fetchFollowStatus()
       }
     },
     async handleThumbup(comment) {
-      if (!this.requireLogin()) return
+      if (!this.requireLogin() || !this.canInteract) return
       const commentId = comment.id || comment._id
       try {
         const res = await thumbupComment(commentId)
@@ -423,9 +577,23 @@ export default {
           this.$message.success('点赞成功')
           comment.thumbup = (comment.thumbup || 0) + 1
         }
-      } catch (e) {
-        console.error(e)
+      } catch (error) {
+        await this.refreshAfterCommentError(error)
       }
+    },
+    async refreshAfterCommentError(error) {
+      const status = error.response && error.response.status
+      if (status === 404) await this.fetchData(false)
+      else if (status === 400) await this.fetchComments()
+    },
+    replyToComment(comment) {
+      if (!this.requireLogin() || !this.canInteract) return
+      this.replyTo = comment
+      this.$nextTick(() => this.$refs.commentInput.focus())
+    },
+    getParentAuthor(parentId) {
+      const parent = this.comments.find(comment => (comment._id || comment.id) === parentId)
+      return parent ? parent.userid : parentId
     },
     canDeleteComment(comment) {
       if (!this.isLoggedIn) return false
@@ -436,31 +604,36 @@ export default {
       return found ? found.labelname : id
     },
     requireLogin() {
-      if (this.$store.state.user && this.$store.state.user.expiresAt > Date.now()) return true
-      this.$store.commit('LOGOUT')
+      if (this.isLoggedIn) return true
       this.$router.push({ path: '/login', query: { redirect: this.$route.fullPath } })
       return false
     },
-    handleDeleteComment(commentId) {
-      this.$confirm('确定删除该评论吗？', '提示', {
-        type: 'warning'
-      }).then(async () => {
-        try {
-          const res = await deleteComment(commentId)
-          if (res && res.flag) {
-            this.$message.success('评论已删除')
-            this.fetchComments()
-          }
-        } catch (e) {
-          console.error(e)
+    async handleDeleteComment(commentId) {
+      if (!this.requireLogin()) return
+      try {
+        await this.$confirm('确定删除该评论及其全部后代回复吗？包含其他用户的回复，删除后无法恢复。', '删除评论', {
+          type: 'warning',
+          confirmButtonText: '删除评论及回复',
+          cancelButtonText: '取消'
+        })
+      } catch {
+        return
+      }
+      try {
+        const res = await deleteComment(commentId)
+        if (res && res.flag) {
+          this.$message.success('评论及其回复已删除')
+          await this.fetchData(false)
         }
-      }).catch(() => {})
+      } catch (error) {
+        await this.refreshAfterCommentError(error)
+      }
     },
     editArticle() {
       this.$router.push(`/article/edit/${this.articleId}`)
     },
     confirmDelete() {
-      this.$confirm('确定删除此文章吗？删除后将无法恢复。', '警告', {
+      this.$confirm('确定删除此文章及其全部评论和回复吗？删除后将无法恢复。', '警告', {
         type: 'warning',
         confirmButtonText: '确定删除',
         cancelButtonText: '取消'
@@ -610,28 +783,7 @@ export default {
   line-height: 1.8;
   color: #2c3e50;
   word-break: break-word;
-}
-
-.article-body >>> p {
-  margin-bottom: 16px;
-}
-
-.article-body >>> ul,
-.article-body >>> ol {
-  margin-bottom: 16px;
-  padding-left: 24px;
-}
-
-.article-body >>> li {
-  margin-bottom: 6px;
-}
-
-.article-body >>> code {
-  background: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #e6a23c;
-  font-family: monospace;
+  white-space: pre-wrap;
 }
 
 .section-title {
@@ -652,6 +804,40 @@ export default {
 
 .comment-input-box {
   margin-bottom: 24px;
+}
+
+.comment-notice {
+  margin-bottom: 20px;
+}
+
+.reply-target {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #f5f7fa;
+  border-left: 3px solid #409eff;
+  border-radius: 4px;
+}
+
+.reply-target-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.reply-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #909399;
+  font-size: 13px;
+}
+
+.reply-reference {
+  margin-bottom: 6px;
+  color: #909399;
+  font-size: 12px;
 }
 
 .comment-input-footer {
@@ -681,6 +867,7 @@ export default {
 
 .comment-body {
   flex: 1;
+  min-width: 0;
 }
 
 .comment-header {
@@ -705,6 +892,8 @@ export default {
   line-height: 1.6;
   color: #606266;
   margin-bottom: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .comment-footer {

@@ -73,6 +73,9 @@ service.interceptors.response.use(
       error.code = result.code
       error.message = result.message || error.message
     }
+    if (response && config && config.errorMessages && config.errorMessages[response.status]) {
+      error.message = config.errorMessages[response.status]
+    }
     Message({
       message: error.message || '网络连接异常，请稍后重试',
       type: 'error',

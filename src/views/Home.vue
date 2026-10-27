@@ -50,6 +50,7 @@
             <div class="card-body">
               <div class="card-meta">
                 <span v-if="article.istop === '1'" class="badge-top">置顶</span>
+                <span v-if="article.ispublic === '0'" class="badge-state">私密</span>
                 <span v-if="isAuthor(article)" class="badge-state">
                   {{ getStateText(article.state) }}
                 </span>
@@ -229,15 +230,6 @@ export default {
           (a.content && a.content.toLowerCase().includes(kw))
         )
       }
-
-      // 置顶文章排在前面
-      list.sort((a, b) => {
-        if (a.istop === '1' && b.istop !== '1') return -1
-        if (a.istop !== '1' && b.istop === '1') return 1
-        const dateA = a.createtime ? new Date(a.createtime).getTime() : 0
-        const dateB = b.createtime ? new Date(b.createtime).getTime() : 0
-        return dateB - dateA
-      })
 
       return list
     },

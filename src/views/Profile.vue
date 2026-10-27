@@ -144,7 +144,7 @@
                 v-model="passwordForm.newPassword"
                 type="password"
                 show-password
-                placeholder="8~64 个字符"
+                placeholder="8~64 个字符，最多 72 字节"
               />
             </el-form-item>
             <el-form-item label="确认新密码" prop="confirmPassword">
@@ -198,6 +198,7 @@
 
 <script>
 import { getProfile, updateProfile, changePassword, getUserFans, getUserFollows } from '@/api/user'
+import { validateNewPassword } from '@/utils/password'
 
 const fieldLabels = {
   nickname: '昵称',
@@ -207,14 +208,6 @@ const fieldLabels = {
   interest: '兴趣',
   personality: '个性签名',
   birthday: '生日'
-}
-
-function notBlank(rule, value, callback) {
-  if (typeof value === 'string' && value.length > 0 && !value.trim()) {
-    callback(new Error('不能为纯空白'))
-    return
-  }
-  callback()
 }
 
 export default {
@@ -259,8 +252,7 @@ export default {
         oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
         newPassword: [
           { required: true, message: '请输入新密码', trigger: 'blur' },
-          { min: 8, max: 64, message: '新密码长度须为 8 到 64 个字符', trigger: 'blur' },
-          { validator: notBlank, trigger: 'blur' }
+          { validator: validateNewPassword, trigger: 'blur' }
         ],
         confirmPassword: [
           { required: true, message: '请再次输入新密码', trigger: 'blur' },
