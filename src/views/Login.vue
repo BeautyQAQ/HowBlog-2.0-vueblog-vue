@@ -45,17 +45,6 @@
           <router-link to="/register">立即注册</router-link>
         </div>
 
-        <div class="quick-fill">
-          <span class="quick-label">快捷填入测试账号：</span>
-          <div class="quick-buttons">
-            <el-button size="mini" plain @click="fillAccount('13800000000', '123456')">
-              Alice (13800000000)
-            </el-button>
-            <el-button size="mini" plain @click="fillAccount('13900000000', '123456')">
-              Bob (13900000000)
-            </el-button>
-          </div>
-        </div>
       </el-form>
     </el-card>
   </div>
@@ -88,10 +77,6 @@ export default {
     }
   },
   methods: {
-    fillAccount(mobile, password) {
-      this.form.mobile = mobile
-      this.form.password = password
-    },
     handleLogin() {
       this.$refs.form.validate(async valid => {
         if (!valid) return
@@ -171,24 +156,6 @@ export default {
   font-size: 15px;
   letter-spacing: 2px;
   margin-top: 10px;
-}
-
-.quick-fill {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px dashed #ebeef5;
-}
-
-.quick-label {
-  font-size: 12px;
-  color: #909399;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.quick-buttons {
-  display: flex;
-  gap: 8px;
 }
 
 .register-link {

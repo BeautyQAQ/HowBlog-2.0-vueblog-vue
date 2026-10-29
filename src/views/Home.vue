@@ -132,7 +132,7 @@
         </div>
 
         <!-- 分页组件 -->
-        <div v-if="filteredArticles.length > pageSize" class="pagination-wrapper">
+        <div v-if="displayTotal > pageSize" class="pagination-wrapper">
           <el-pagination
             background
             layout="prev, pager, next, total"
@@ -207,15 +207,22 @@ export default {
       searchKeyword: '',
       currentPage: 1,
       pageSize: 10,
-      total: 0
+      total: 0,
+      articlesViewerId: '',
+      articleRequestId: 0
     }
   },
   computed: {
     ...mapGetters(['userId', 'isLoggedIn']),
+    articleViewerId() {
+      return this.isLoggedIn ? this.userId : ''
+    },
     showMine() {
       return this.$route.query.mine === '1' && this.isLoggedIn
     },
     filteredArticles() {
+      // 身份变化后，即使清理 watcher 尚未执行，也不展示上一身份的缓存。
+      if (this.articlesViewerId !== this.articleViewerId) return []
       let list = [...this.articles]
 
       if (this.selectedLabel) {
@@ -239,6 +246,7 @@ export default {
       return this.filteredArticles.slice(start, start + this.pageSize)
     },
     displayTotal() {
+      if (this.articlesViewerId !== this.articleViewerId) return 0
       return this.searchKeyword ? this.filteredArticles.length : this.total
     }
   },
@@ -256,13 +264,25 @@ export default {
         this.currentPage = 1
         this.fetchArticles()
       }
+    },
+    articleViewerId() {
+      this.articles = []
+      this.total = 0
+      this.currentPage = 1
+      this.fetchArticles()
     }
   },
   created() {
     this.fetchLabels()
   },
+  beforeDestroy() {
+    this.articleRequestId++
+  },
   methods: {
     async fetchArticles() {
+      const requestId = ++this.articleRequestId
+      const viewerId = this.articleViewerId
+      const isCurrent = () => requestId === this.articleRequestId && viewerId === this.articleViewerId
       this.loading = true
       try {
         if (this.searchKeyword) {
@@ -272,10 +292,13 @@ export default {
           const res = this.showMine || this.selectedLabel
             ? await searchArticle(1, 100, conditions)
             : await getArticleList()
+          if (!isCurrent()) return
           if (res && res.flag && Array.isArray(res.data)) {
+            this.articlesViewerId = viewerId
             this.articles = res.data
             this.total = this.filteredArticles.length
           } else if (res && res.flag && res.data) {
+            this.articlesViewerId = viewerId
             this.articles = Array.isArray(res.data.rows) ? res.data.rows : []
             this.total = this.filteredArticles.length
           }
@@ -286,14 +309,16 @@ export default {
         if (this.selectedLabel) conditions.labelIds = [this.selectedLabel]
         if (this.showMine) conditions.userid = this.userId
         const res = await searchArticle(this.currentPage, this.pageSize, conditions)
+        if (!isCurrent()) return
         if (res && res.flag && res.data) {
+          this.articlesViewerId = viewerId
           this.articles = Array.isArray(res.data.rows) ? res.data.rows : []
           this.total = Number(res.data.total) || 0
         }
       } catch (e) {
-        console.error('Failed to fetch articles:', e)
+        if (isCurrent()) console.error('Failed to fetch articles:', e)
       } finally {
-        this.loading = false
+        if (isCurrent()) this.loading = false
       }
     },
     async fetchLabels() {

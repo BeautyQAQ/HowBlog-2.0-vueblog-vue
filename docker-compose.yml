@@ -1,0 +1,17 @@
+# Static frontend + same-origin API/IM gateway. Does not create or migrate databases.
+# Copy .env.example to the ignored .env.local before customizing the values.
+# docker compose --env-file .env.local up -d --build
+services:
+  frontend:
+    build:
+      context: .
+    image: ${HOW_WEB_IMAGE:-howblog-web:local}
+    environment:
+      HOW_BASE_UPSTREAM: ${HOW_BASE_UPSTREAM:-http://host.docker.internal:9001}
+      HOW_ARTICLE_UPSTREAM: ${HOW_ARTICLE_UPSTREAM:-http://host.docker.internal:9004}
+      HOW_USER_UPSTREAM: ${HOW_USER_UPSTREAM:-http://host.docker.internal:9008}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "${HOW_WEB_BIND_ADDRESS:-127.0.0.1}:${HOW_WEB_PORT:-8080}:8080"
+    restart: unless-stopped

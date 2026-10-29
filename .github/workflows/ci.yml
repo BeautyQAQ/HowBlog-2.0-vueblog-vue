@@ -1,0 +1,37 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Run regression tests
+        run: npm test
+      - name: Build production assets
+        run: npm run build
+      - name: Validate frontend Compose
+        run: docker compose config --quiet
+      - name: Build and check nginx configuration
+        run: |
+          docker build -t howblog-web:ci .
+          docker run --rm --add-host=host.docker.internal:host-gateway howblog-web:ci nginx -t
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          if-no-files-found: error

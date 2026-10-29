@@ -1,0 +1,17 @@
+# Optional: connect to the existing Java Compose network using service DNS.
+# HOW_BACKEND_NETWORK must name an existing network; this file creates no backend.
+# docker compose --env-file .env.local -f docker-compose.yml -f docker/compose.backend-network.yml up -d --build
+services:
+  frontend:
+    environment:
+      HOW_BASE_UPSTREAM: http://how-base:9001
+      HOW_ARTICLE_UPSTREAM: http://how-article:9004
+      HOW_USER_UPSTREAM: http://how-user:9008
+    networks:
+      - default
+      - backend
+
+networks:
+  backend:
+    external: true
+    name: ${HOW_BACKEND_NETWORK:?Set HOW_BACKEND_NETWORK to the existing backend Docker network}

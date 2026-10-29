@@ -1,0 +1,73 @@
+# Only HOW_* variables are substituted by the official nginx entrypoint.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+# WebSocket credentials are in the query string; never log query parameters.
+log_format howblog '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
+                   '$status $body_bytes_sent "$http_user_agent"';
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+    access_log /var/log/nginx/access.log howblog;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location ~ ^/api/label(?:/|$) {
+        rewrite ^/api/(.*)$ /$1 break;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_set_header Connection "";
+        proxy_pass ${HOW_BASE_UPSTREAM};
+    }
+
+    location ~ ^/api/(?:article|comment)(?:/|$) {
+        rewrite ^/api/(.*)$ /$1 break;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_set_header Connection "";
+        proxy_pass ${HOW_ARTICLE_UPSTREAM};
+    }
+
+    location ~ ^/api/user(?:/|$) {
+        rewrite ^/api/(.*)$ /$1 break;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_set_header Connection "";
+        proxy_pass ${HOW_USER_UPSTREAM};
+    }
+
+    location = /im {
+        # Upstream errors otherwise repeat the query-string access token.
+        # REST errors remain logged; IM health is checked through /healthz and the user service.
+        error_log /dev/null;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 75s;
+        proxy_send_timeout 75s;
+        proxy_pass ${HOW_USER_UPSTREAM};
+    }
+
+    # Unknown API routes must not silently return the SPA HTML.
+    location = /api { return 404; }
+    location /api/ { return 404; }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    location ~* \.(?:js|css|png|jpe?g|gif|ico|svg|woff2?|ttf|eot)$ {
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
